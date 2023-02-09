@@ -58,15 +58,6 @@ def euler(fun, z0, t0, t1, t_span, args):
         z_old = z_new
     return np.array(z)
 
-# def J(z_ref, t_span, args_ref, mu_prd):
-#     kappa, mu, m = args_ref
-#     x_ref = z_ref[:,0]
-#     v_ref = z_ref[:,1]
-#     # true_v_dot = vdp(z_ref.T, t_span, args_ref)[1]
-#     v_dot = (v_ref[1:] - v_ref[:-1])/(t_span[1:] - t_span[:-1])
-#     residual = v_dot - spring(x_ref, kappa)[:-1]/m
-#     prd = damping(x_ref, v_ref, mu_prd)[:-1]/m
-#     return 0.5 * np.mean((residual - prd)**2)
 
 # The residuals are 1 shorter than the z_ref since we do
 # finite differences on the reference values to get the derivatives
