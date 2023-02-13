@@ -60,9 +60,9 @@ def euler(fun, z0, t0, t1, t_span, args):
     return np.array(z).T
 
 def J(z_at_t, z_at_t_ref, t_span, mu):
-    difference_at_t = (z_at_t - z_at_t_ref)**2
-    quadratic_loss_at_t = 0.5 * np.sum(difference_at_t, axis=0)
-    return integrate.trapezoid(quadratic_loss_at_t, t_span, axis=-1)
+    difference_at_t = z_at_t - z_at_t_ref
+    quadratic_loss_at_t = 0.5 * np.einsum("iN,iN->N", difference_at_t, difference_at_t) # Just the scalarproduct
+    return integrate.trapezoid(quadratic_loss_at_t, t_span, axis=0)
 
 def dg_dmu(z_at_t, z_at_t_ref, t_span, mu):
     difference_at_t = (z_at_t - z_at_t_ref)[1,1:]
@@ -71,26 +71,39 @@ def dg_dmu(z_at_t, z_at_t_ref, t_span, mu):
 
 
 if __name__ == '__main__':
-    args = [[1.0, 3.0, 1.0],]
-    args_prd = [[1.0, 1.0, 1.0],]
+    theta = [[3.0, 8.53, 1.0],]
+    theta_prd = [[3.0, 1.0, 1.0],]
     t0 = 0.0
     t1 = 10.0
-    steps = 1001
+    steps = 401
     t_span = np.linspace(t0, t1, steps)
     z0 = np.array([1.0, 0.0])
     alpha  = 0.1
     epochs = 1000
 
-    mu = args_prd[0][1]
-    m = args_prd[0][2]
-    z_ref = euler(vdp, z0, t0, t1, t_span, args)
+    mu = theta_prd[0][1]
+    m = theta_prd[0][2]
+    z_ref = euler(vdp, z0, t0, t1, t_span, theta)
+    z_prd = euler(vdp, z0, z0, t1, t_span, theta_prd)
+    
+    fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(18, 6))
+    ax1.plot(t_span, z_ref[0], label='Reference Position')
+    ax1.plot(t_span, z_ref[1], label='Reference Velocity')
+    ax1.plot(t_span, z_prd[0], label='Prediction Position')
+    ax1.plot(t_span, z_prd[1], label='Prediction Velocity')
+    ax1.legend()
+    ax1.grid()
+    ax1.set_title('Start')
+
+    losses = []
 
     for epoch in range(epochs):
         # lr = alpha/(np.log(epoch+2))
         lr = alpha
-        z_prd = euler(vdp, z0, z0, t1, t_span, args_prd)
+        z_prd = euler(vdp, z0, z0, t1, t_span, theta_prd)
         loss = J(z_prd, z_ref, t_span, mu)
-        print(f'Loss: {loss}')
+        losses.append(loss)
+        print(f'Epoch: {epoch}, Loss: {loss:.3f},  Mu:{mu:.3f}')
         terminal_condition = np.zeros((2, 2))
         terminal_condition[:, 0] = z_prd[:, -1]
         solution_and_adjoint_variable_at_t = euler(adjoint_model,
@@ -98,7 +111,7 @@ if __name__ == '__main__':
                                                 t1,
                                                 t0,
                                                 np.flip(t_span),
-                                                args=(*args_prd, z_ref, t_span))
+                                                args=(*theta_prd, z_ref, t_span))
         solution_and_adjoint_variable_at_t = np.flip(solution_and_adjoint_variable_at_t.reshape((2, 2, steps)), axis=2)
 
         solution_variable_at_t = np.flip(solution_and_adjoint_variable_at_t[:, 0, :], axis=1)
@@ -111,7 +124,7 @@ if __name__ == '__main__':
 
         adjoint_variable_matmul_del_f__del_theta_at_t = np.einsum("iN,ijN->jN", adjoint_variable_at_t, del_f__del_theta__at_t)
 
-        # d_J__d_theta__entire_trajectory = (dJ_dmu(z_ref, t_span, *args, mu) + 
+        # d_J__d_theta__entire_trajectory = (dJ_dmu(z_ref, t_span, *theta, mu) + 
         #     integrate.trapezoid(adjoint_variable_matmul_del_f__del_theta_at_t, t_span, axis=-1))
         d_g__d_mu = dg_dmu(z_prd, z_ref, t_span, mu)
 
@@ -120,39 +133,63 @@ if __name__ == '__main__':
 
 
         mu = mu - lr * d_J__d_theta__entire_trajectory[0]
-        args_prd[0][1] = mu
-        print(f'Mu:{mu}')
-        if epoch % 100 == 0:
-            plt.plot(t_span, z_ref[0], label='Reference Position')
-            plt.plot(t_span, z_ref[1], label='Reference Velocity')
-            plt.plot(t_span, z_prd[0], label='Prediction Position')
-            plt.plot(t_span, z_prd[1], label='Prediction Velocity')
-            plt.legend()
-            plt.grid()
-            fig = plt.figure()
-            ax = fig.subplots()
-            ax.plot(t_span, adjoint_variable_at_t[0], label = 'adjoint, x')
-            ax.plot(t_span, adjoint_variable_at_t[1], label = 'adjoint, v')
-            ax.legend()
-            ax.grid()
+        theta_prd[0][1] = mu
+        if epoch % 500 == 0:
+            fig2, (ax4, ax5, ax6, ax7) = plt.subplots(1, 4, figsize=(24, 6))
+            ax4.plot(t_span, z_ref[0], label='Reference Position')
+            ax4.plot(t_span, z_ref[1], label='Reference Velocity')
+            ax4.plot(t_span, z_prd[0], label='Prediction Position')
+            ax4.plot(t_span, z_prd[1], label='Prediction Velocity')
+            ax4.legend()
+            ax4.grid()
+            ax4.set_title(f'Epoch: {epoch}')
+
+            ax5.plot(t_span, adjoint_variable_at_t[0], label = 'adjoint, x')
+            ax5.plot(t_span, adjoint_variable_at_t[1], label = 'adjoint, v')
+            ax5.legend()
+            ax5.grid()
+            ax5.set_title('Adjoint')
+
+            ax6.plot(t_span, z_prd[0], label = 'Prediction, x')
+            ax6.plot(t_span, z_prd[1], label = 'Prediction, v')
+            ax6.plot(t_span, np.flip(solution_variable_at_t[0]), label = 'Reverse Prediction, x')
+            ax6.plot(t_span, np.flip(solution_variable_at_t[1]), label = 'Reverse Prediction, v')
+            ax6.legend()
+            ax6.grid()
+            
+            ax7.plot(losses)
+            ax7.grid()
+            ax7.set_title('Losses')
+
             plt.show()
 
-    plt.plot(t_span, z_ref[0], label='Reference Position')
-    plt.plot(t_span, z_ref[1], label='Reference Velocity')
-    plt.plot(t_span, z_prd[0], label='Prediction Position')
-    plt.plot(t_span, z_prd[1], label='Prediction Velocity')
-    plt.legend()
-    plt.grid()
-    fig = plt.figure()
-    ax = fig.subplots()
-    ax.plot(t_span, solution_variable_at_t[0], label = 'solution, x')
-    ax.plot(t_span, solution_variable_at_t[1], label = 'solution, v')
-    ax.legend()
-    ax.grid()
-    fig = plt.figure()
-    ax = fig.subplots()
-    ax.plot(t_span, adjoint_variable_at_t[0], label = 'adjoint, x')
-    ax.plot(t_span, adjoint_variable_at_t[1], label = 'adjoint, v')
-    ax.legend()
-    ax.grid()
+    ax2.plot(t_span, z_ref[0], label='Reference Position')
+    ax2.plot(t_span, z_ref[1], label='Reference Velocity')
+    ax2.plot(t_span, z_prd[0], label='Prediction Position')
+    ax2.plot(t_span, z_prd[1], label='Prediction Velocity')
+    ax2.legend()
+    ax2.grid()
+    ax2.set_title('Final')
+
+    ax3.plot(losses, label='Learning loss')
+    ax3.legend()
+    ax3.grid()
+    ax3.set_title('Losses')
     plt.show()
+    fig.savefig(f'adjoint_mu_({theta[0][1]})_hand_euler_{steps}_steps.png')
+
+
+    fig2, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 6))
+    ax1.plot(t_span, z_prd[0], label = 'Prediction, x')
+    ax1.plot(t_span, z_prd[1], label = 'Prediction, v')
+    ax1.plot(t_span, np.flip(solution_variable_at_t[0]), label = 'Reverse Prediction, x')
+    ax1.plot(t_span, np.flip(solution_variable_at_t[1]), label = 'Reverse Prediction, v')
+    ax1.legend()
+    ax1.grid()
+
+    ax2.plot(t_span, adjoint_variable_at_t[0], label = 'adjoint, x')
+    ax2.plot(t_span, adjoint_variable_at_t[1], label = 'adjoint, v')
+    ax2.legend()
+    ax2.grid()
+    fig2.savefig(f'adjoint_mu_({theta[0][1]})_hand_euler_{steps}_steps_extra.png')
+    
