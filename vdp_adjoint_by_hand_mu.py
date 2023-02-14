@@ -11,9 +11,9 @@ config.update("jax_enable_x64", True)
 
 def vdp(z, t, args):
     kappa, mu, m = args
-    x = z[0]
-    v = z[1]
-    return jnp.array([v, (spring(x, kappa) + damping(x, v, mu))/m])
+    # x = z[0]
+    # v = z[1]
+    return jnp.array([z[1], (spring(z[0], kappa) + damping(z[0], z[1], mu))/m])
 
 def adjoint_model(s, t, args, z_ref, t_span):
     """
@@ -41,12 +41,12 @@ def adjoint_model(s, t, args, z_ref, t_span):
     z_at_current_t_ref = jnp.array([x_at_current_t_ref, v_at_current_t_ref])
 
     del_f__del_z = jnp.array([[0, 1], 
-                             [-kappa/m + 2*mu*z[0]*z[1], -mu*(1-z[0]**2)/m]])
+                             [-kappa/m + (2*mu*z[0]*z[1]), (-mu*(1-z[0]**2)/m)]])
 
-    del_g__del_z = (z - z_at_current_t_ref).T
+    del_g__del_z = (z - z_at_current_t_ref)
 
     original_rhs = vdp(z, t, args).reshape((-1, 1))
-    adjoint_rhs =  (- (del_f__del_z.T @ adjoint_variable) - del_g__del_z.T).reshape((-1, 1))
+    adjoint_rhs =  (- (del_f__del_z.T @ adjoint_variable) - del_g__del_z).reshape((-1, 1))
 
     return jnp.concatenate((original_rhs, adjoint_rhs), axis=1).flatten()
 
@@ -65,14 +65,14 @@ def J(z_at_t, z_at_t_ref, t_span, mu):
 
 
 if __name__ == '__main__':
-    theta = [[3.0, 8.53, 1.0],]
-    theta_prd = [[3.0, 1.0, 1.0],]
+    theta = [[1.0, 8.53, 1.0],]
+    theta_prd = [[1.0, 1.0, 1.0],]
     start_time = 0.0
     end_time = 10.0
-    steps = 401
+    steps = 101
     t_span = np.linspace(start_time, end_time, steps)
     initial_condition = np.array([1.0, 0.0])
-    learning_rate_initial = 0.001
+    learning_rate_initial = 0.01
     epochs = 1000
     integration_method = euler
 
@@ -106,10 +106,10 @@ if __name__ == '__main__':
                                                 end_time,
                                                 start_time,
                                                 np.flip(t_span),
-                                                args=(*theta_prd, z_ref, t_span))
-        solution_and_adjoint_variable_at_t = np.flip(solution_and_adjoint_variable_at_t.reshape((2, 2, steps)), axis=2)
-
-        solution_variable_at_t = np.flip(solution_and_adjoint_variable_at_t[:, 0, :], axis=1)
+                                                args=(*theta_prd, np.flip(z_ref, axis=1), t_span))
+        # solution_and_adjoint_variable_at_t = np.flip(solution_and_adjoint_variable_at_t.reshape((2, 2, steps)), axis=2)
+        solution_and_adjoint_variable_at_t = solution_and_adjoint_variable_at_t.reshape((2, 2, steps))
+        solution_variable_at_t = solution_and_adjoint_variable_at_t[:, 0, :]
         adjoint_variable_at_t = solution_and_adjoint_variable_at_t[:, 1, :]
 
         # Initial condition did not depend on mu
@@ -117,15 +117,15 @@ if __name__ == '__main__':
 
         del_f__del_theta__at_t = np.array([[np.zeros((steps))], [-(1-z_prd[0]**2)*z_prd[1]/m]])
 
-        adjoint_variable_matmul_del_f__del_theta_at_t = np.einsum("iN,ijN->jN", adjoint_variable_at_t, del_f__del_theta__at_t)
+        d_J__d_theta__entire_trajectory = np.einsum("iN,ijN->j", adjoint_variable_at_t, del_f__del_theta__at_t)
 
         # The Derivative of g with respect to mu is equal to zero; thats why it is skipped here
 
         # d_J__d_theta__entire_trajectory = integrate.trapezoid(adjoint_variable_matmul_del_f__del_theta_at_t, t_span, axis=-1)
-        d_J__d_theta__entire_trajectory = jnp.sum(adjoint_variable_matmul_del_f__del_theta_at_t, axis=-1)
+        # d_J__d_theta__entire_trajectory = jnp.sum(adjoint_variable_matmul_del_f__del_theta_at_t, axis=-1)
 
 
-        # mu = mu - lr * d_J__d_theta__entire_trajectory[0]
+        mu = mu - lr * d_J__d_theta__entire_trajectory[0]
         theta_prd[0][1] = mu
         if epoch % 500 == 0 or epoch == epochs-1:
             fig2, (ax4, ax5, ax6, ax7) = plt.subplots(1, 4, figsize=(24, 6))
@@ -145,8 +145,8 @@ if __name__ == '__main__':
 
             ax6.plot(t_span, z_prd[0], label = 'Prediction, x')
             ax6.plot(t_span, z_prd[1], label = 'Prediction, v')
-            ax6.plot(t_span, np.flip(solution_variable_at_t[0]), label = 'Reverse Prediction, x')
-            ax6.plot(t_span, np.flip(solution_variable_at_t[1]), label = 'Reverse Prediction, v')
+            ax6.plot(t_span, solution_variable_at_t[0], label = 'Reverse Prediction, x')
+            ax6.plot(t_span, solution_variable_at_t[1], label = 'Reverse Prediction, v')
             ax6.legend()
             ax6.grid()
             
@@ -175,8 +175,8 @@ if __name__ == '__main__':
     fig2, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 6))
     ax1.plot(t_span, z_prd[0], label = 'Prediction, x')
     ax1.plot(t_span, z_prd[1], label = 'Prediction, v')
-    ax1.plot(t_span, np.flip(solution_variable_at_t[0]), label = 'Reverse Prediction, x')
-    ax1.plot(t_span, np.flip(solution_variable_at_t[1]), label = 'Reverse Prediction, v')
+    ax1.plot(t_span, solution_variable_at_t[0], label = 'Reverse Prediction, x')
+    ax1.plot(t_span, solution_variable_at_t[1], label = 'Reverse Prediction, v')
     ax1.legend()
     ax1.grid()
 
