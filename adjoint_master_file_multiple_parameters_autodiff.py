@@ -37,16 +37,6 @@ def adjoint_ode(adj, z, z_ref, t, ode_parameters):
     d_adj = - df_dz.T @ adj - dg_dz
     return d_adj
 
-# def df_dz(z, ode_parameters):
-#     '''Calculates the jacobian of f w.r.t. z derived by hand.'''
-#     kappa = ode_parameters[0]
-#     mu = ode_parameters[1]
-#     mass = ode_parameters[2]
-#     df1_dz = np.array([0, 1])
-#     df2_dz = np.array([-kappa/mass + float(2*mu*z[0]*z[1])/mass,
-#                       float(-mu*(1-z[0]**2))/mass])
-#     return np.array([df1_dz, df2_dz])
-
 def df_dphi(z, ode_parameters):
     '''Calculates the derivative of f w.r.t. the physical parameters phi.'''
     kappa = ode_parameters[0]
@@ -63,13 +53,6 @@ def g(z, z_ref, ode_parameters):
     This function can either take individual floats for z
     and z_ref or whole numpy arrays'''
     return jnp.sum(0.5 * (z_ref - z)**2, axis = 0)
-
-# def dg_dz(z, z_ref):
-#     '''Calculates the derivative of g w.r.t. z, derived by hand.'''
-#     return jnp.sum(z - z_ref, axis=1)
-
-# def dg_dphi(z, z_ref):
-#     return 0.0
 
 def J(z, z_ref, ode_parameters):
     '''Calculates the complete loss of a trajectory w.r.t. a reference trajectory'''
@@ -143,6 +126,6 @@ ode_parameters_ref = np.asarray([3.0, 8.53, 1.0])
 ode_parameters = np.asarray([1.0, 1.0, 1.0])
 args = [t, z0, ode_parameters_ref]
 
-'''Sometimes boundaries must be defined '''
+# Sometimes either boundaries have to be defined or the numer of steps has to be increased.
 res = minimize(function_wrapper, ode_parameters, method='BFGS', jac=True, args=args, bounds=[(0, 10), (0, 10), (0.1, 10)])
 print(res)
