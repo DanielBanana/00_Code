@@ -6,7 +6,7 @@ from scipy.optimize import minimize
 def f(z, t, mu):
     '''Calculates the right hand side of the original ODE.'''
     x = z[1]
-    v = -3*z[0] - float(mu*(1-z[0]**2)*z[1])
+    v = -1.0*z[0] - float(mu*(1-z[0]**2)*z[1])
     return np.array([x, v])
 
 def adj(a, z, z_ref, t, mu):
@@ -16,9 +16,9 @@ def adj(a, z, z_ref, t, mu):
 
 def df_dz(z, mu):
     '''Calculates the jacobian of f w.r.t. z derived by hand.'''
-    df_dx = np.array([0, 1])
-    df_dv = np.array([-3 + float(2*mu*z[0]*z[1]), float(-mu*(1-z[0]**2))])
-    return np.array([df_dx, df_dv])
+    df1_dz = np.array([0, 1])
+    df2_dz = np.array([-1.0 + float(2*mu*z[0]*z[1]), float(-mu*(1-z[0]**2))])
+    return np.array([df1_dz, df2_dz])
 
 def df_dmu(z):
     '''Calculates the derivative of f w.r.t. the damping parameter mu.'''
@@ -70,6 +70,9 @@ def function_wrapper(mu):
 
     z_ref = f_euler(z0, t, mu_ref)
     z = f_euler(z0, t, mu)
+    # plt.plot(t, z_ref)
+    # plt.plot(t, z)
+    # plt.show()
 
     a0 = np.array([0, 0])
     adjoint = adj_euler(a0, np.flip(z, axis=0), np.flip(z_ref, axis=0), np.flip(t), mu)
@@ -80,7 +83,7 @@ def function_wrapper(mu):
         df_dmu_at_t.append(df_dmu(z_at_t))
     df_dmu_at_t = np.array(df_dmu_at_t)
     loss = J(z, z_ref)
-    dJ_dmu = 0
+    # dJ_dmu = 0
     # for i in range(t.shape[0]):
     #     dJ_dmu += dg_dmu(z, z_ref) + a.T[:,i] @ df_dmu_at_t[i]
     # # a = np.expand_dims(a, 1)
