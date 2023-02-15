@@ -55,7 +55,7 @@ def g(z, z_ref):
     
     This function can either take individual floats for z
     and z_ref or whole numpy arrays'''
-    return 0.5 * (z_ref - z)**2
+    return np.sum(0.5 * (z_ref - z)**2, axis=1)
 
 def dg_dz(z, z_ref):
     '''Calculates the derivative of g w.r.t. z, derived by hand.'''
