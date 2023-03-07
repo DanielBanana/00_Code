@@ -1,0 +1,188 @@
+/* Submodel DAM10N skeleton created by AME Submodel editing utility
+   Thu Apr 21 13:07:57 2022 */
+
+
+
+#include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <assert.h>
+#include "ameutils.h"
+/* *******************************************************************************
+TITLE : DAM10N
+
+------------------------------------------------------------------------------
+DESCRIPTION :
+	
+	DAM10 is a simple submodel of a variable damper. The submodel has 
+	three ports and gives force (N) as outputs at ports 1 and 3. 
+	Connected submodels must provide velocities (m/s) as inputs to 
+	these ports.
+	
+	The damper rating [N/(m/s)] is required as an input signal on port 2.
+	
+	This is a modification of the original DAM10 model, with as only difference
+	that the damping rate may be negative.
+------------------------------------------------------------------------------
+USAGE :
+	
+	The signal received at port 2 is interpreted as the damper rate 
+	in N/(m/s). Negative damping rates are accepted. A test will print a
+	warning message if the damping rate becomes negative. This message
+	will not be repeated and the damping rate provided will be used when 
+	without modification (including negative values).
+------------------------------------------------------------------------------
+PARAMETER SETTINGS :
+
+------------------------------------------------------------------------------
+DATE OF CREATION/AUTHOR : 11/02/1998 by Fabrice GALLO (INAGINE(Roanne))
+------------------------------------------------------------------------------
+INDEX OF REVISIONS : 21/04/2022 by Pieter AARNOUTSE
+------------------------------------------------------------------------------
+LIST OF FUNCTIONS USED :
+------------------------------------------------------------------------------
+SOURCE :
+   Siemens Industry Software SAS
+   7 place des Minimes
+   42300 Roanne - France
+   tel: (33).04.77.23.60.30
+   fax: (33).04.77.23.60.31
+   www.siemens.com/plm
+
+   Copyright 2015 Siemens Industry Software NV
+******************************************************************************* */
+
+#define _SUBMODELNAME_ "DAM10N"
+
+/* >>>>>>>>>>>>Insert Private Code Here. */
+/* <<<<<<<<<<<<End of Private Code. */
+void dam10nin_(int *n, int ic[4], double *actRdamp
+      , double *energyRdamp)
+
+{
+   int loop, error;
+/* >>>>>>>>>>>>Extra Initialization Function Declarations Here. */
+/* <<<<<<<<<<<<End of Extra Initialization declarations. */
+   loop = 0;
+   error = 0;
+
+/*
+   If necessary, check values of the following:
+
+   *actRdamp
+   *energyRdamp
+*/
+
+
+/* >>>>>>>>>>>>Initialization Function Check Statements. */
+/* <<<<<<<<<<<<End of Initialization Check Statements. */
+
+   if (ameHandleSubmodelError(_SUBMODELNAME_, *n, error))
+   {
+      return;
+   }
+
+
+/* >>>>>>>>>>>>Initialization Function Executable Statements. */
+    ic[0] = 0;
+/* <<<<<<<<<<<<End of Initialization Executable Statements. */
+}
+
+/*  There are 3 ports.
+
+   Port 1 has 2 variables:
+
+      1 f1     duplicate of f3   
+      2 v1     velocity at port 1 [m/s] basic variable input
+
+   Port 2 has 1 variable:
+
+      1 vdamp     variable damping [N/(m/s)] basic variable input
+
+   Port 3 has 2 variables:
+
+      1 f3     force at port 3    [N]   basic variable output
+      2 v3     velocity at port 3 [m/s] basic variable input
+*/
+
+/*  There are 3 internal variables.
+
+      1 actRdamp        activity of mechanical dissipation (damp) [J] explicit state (derivative `dactRdamp') for activity
+      2 powerRdamp      power of mechanical dissipation (damp)    [W] power variable
+      3 energyRdamp     energy of mechanical dissipation (damp)   [J] explicit state (derivative `denergyRdamp') for energy
+*/
+
+void dam10n_(int *n, double *v1, double *vdamp, double *f3, double *v3
+      , double *actRdamp, double *dactRdamp, double *powerRdamp
+      , double *energyRdamp, double *denergyRdamp, int ic[4]
+      , int *flag)
+
+{
+   int loop, logi;
+   double powRdamp;
+
+/* >>>>>>>>>>>>Extra Calculation Function Declarations Here. */
+   double coef;
+   int cond1;
+   double zero=0.0;
+/* <<<<<<<<<<<<End of Extra Calculation declarations. */
+   logi = 0;
+   loop = 0;
+
+/*
+   Set all submodel outputs below:
+
+   *f3         = ??;
+*/
+
+
+
+/* >>>>>>>>>>>>Calculation Function Executable Statements. */
+   cond1 = ic[0] == 0 && *vdamp < 0.0;
+   if(*flag == 0 && cond1)
+   {
+      ic[0] = 1;
+#if 0
+      /* Negative damping rate alarm. */
+      amefprintf(stderr,  "\nWarning: A negative damping rate ");
+      amefprintf(stderr, " for damper DAM10N instance %d has been specified.\n",
+	      (*n));
+      amefprintf(stderr, "The warning will not be repeated.\n");
+#endif
+   }
+   disloc_(&cond1);
+   coef = *vdamp;
+   *f3 = coef * (*v1 + *v3);
+
+/* <<<<<<<<<<<<End of Calculation Executable Statements. */
+
+   if(actRdamp != NULL || energyRdamp != NULL || ispower_() == 1)
+   {
+      /* Set the following power variables:
+
+      powRdamp = ??;
+      */
+
+      /* >>>>>>>>>>>>Energy Common Statements. */
+      powRdamp = - *f3 * (*v1 + *v3) ;
+      /* Rev12: Pr>0 if dissipated to the outside */
+      powRdamp = - powRdamp;
+      /* <<<<<<<<<<<<End of Energy Common Statements. */
+
+      if (ispower_() == 1)
+      {
+         *powerRdamp      = powRdamp;
+      }
+      if (energyRdamp != NULL)
+      {
+         *denergyRdamp    = powRdamp;
+      }
+      if (actRdamp != NULL)
+      {
+         /* >>>>>>>>>>>>Optional Activity Computation Statements. */
+         /* <<<<<<<<<<<<End of Optional Activity Computation Statements. */
+         *dactRdamp       = fabs(powRdamp);
+      }
+   }
+}
+

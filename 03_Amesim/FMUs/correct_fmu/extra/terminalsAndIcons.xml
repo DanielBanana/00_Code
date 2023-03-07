@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<fmiTerminalsAndIcons fmiVersion="3.0">
+<Terminals>
+  <Terminal name="dynamic_mux2" matchingRule="sequence" terminalKind="simcenter_amesim_signalin">
+    <TerminalMemberVariable variableName="amesim_interface.c" memberName="dynamic_mux2_port_2" variableKind="signal"/>
+  </Terminal>
+</Terminals>
+</fmiTerminalsAndIcons>

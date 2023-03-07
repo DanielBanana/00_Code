@@ -1,0 +1,142 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<!DOCTYPE SPE>
+<SPE DOC_VERSION="2" AME_VERSION="2021.2" MAJ="20212" MIN="" PATCH="">
+
+ <SUBMODEL>
+  <SUB_TYPE>0</SUB_TYPE>
+  <SUB_ID_MAX>9</SUB_ID_MAX>
+  <DEFAULT_ICON>damper02</DEFAULT_ICON>
+  <SUB_LABEL>variable damper (force outputs), allows negative damping rate</SUB_LABEL>
+  <SUB_UNIT>0</SUB_UNIT>
+  <R_STORES_NUMBER>0</R_STORES_NUMBER>
+  <I_STORES_NUMBER>3</I_STORES_NUMBER>
+  <P_STORES_NUMBER>0</P_STORES_NUMBER>
+  <DISCONTINUITY>1</DISCONTINUITY>
+  <TIME_REQUIRED>0</TIME_REQUIRED>
+  <HAS_NO_CALC>0</HAS_NO_CALC>
+  <HAS_PREINIT>0</HAS_PREINIT>
+  <OUTPUT_TYPE>1</OUTPUT_TYPE>
+  <IVARS_LIST>
+   <IVAR>
+    <SUB_ID>6</SUB_ID>
+    <TITLE>activity of mechanical dissipation (damp)</TITLE>
+    <VARNAME>actRdamp</VARNAME>
+    <VARNAME2>dactRdamp</VARNAME2>
+    <TYPE>1</TYPE>
+    <IS_DELTA>0</IS_DELTA>
+    <DIMENSION>1</DIMENSION>
+    <UNITS>J</UNITS>
+    <MIN_VALUE>-1.00000000000000e+030</MIN_VALUE>
+    <MAX_VALUE>1.00000000000000e+030</MAX_VALUE>
+    <DEF_VALUE>0</DEF_VALUE>
+    <VALUE>0</VALUE>
+    <PHYS_TYPE>1</PHYS_TYPE>
+    <PHYS_DOMAIN>2</PHYS_DOMAIN>
+    <ACT_SUFFIX>damp</ACT_SUFFIX>
+    <ACT_TYPE>1</ACT_TYPE>
+   </IVAR>
+   <IVAR>
+    <SUB_ID>7</SUB_ID>
+    <TITLE>power of mechanical dissipation (damp)</TITLE>
+    <VARNAME>powerRdamp</VARNAME>
+    <TYPE>9</TYPE>
+    <IS_DELTA>0</IS_DELTA>
+    <DIMENSION>1</DIMENSION>
+    <UNITS>W</UNITS>
+    <PHYS_TYPE>1</PHYS_TYPE>
+    <PHYS_DOMAIN>2</PHYS_DOMAIN>
+    <ACT_SUFFIX>damp</ACT_SUFFIX>
+    <ACT_TYPE>2</ACT_TYPE>
+   </IVAR>
+   <IVAR>
+    <SUB_ID>8</SUB_ID>
+    <TITLE>energy of mechanical dissipation (damp)</TITLE>
+    <VARNAME>energyRdamp</VARNAME>
+    <VARNAME2>denergyRdamp</VARNAME2>
+    <TYPE>1</TYPE>
+    <IS_DELTA>0</IS_DELTA>
+    <DIMENSION>1</DIMENSION>
+    <UNITS>J</UNITS>
+    <MIN_VALUE>-1.00000000000000e+030</MIN_VALUE>
+    <MAX_VALUE>1.00000000000000e+030</MAX_VALUE>
+    <DEF_VALUE>0</DEF_VALUE>
+    <VALUE>0</VALUE>
+    <PHYS_TYPE>1</PHYS_TYPE>
+    <PHYS_DOMAIN>2</PHYS_DOMAIN>
+    <ACT_SUFFIX>damp</ACT_SUFFIX>
+    <ACT_TYPE>3</ACT_TYPE>
+   </IVAR>
+  </IVARS_LIST>
+  <PARAMS_GROUPS_LIST>
+   <PARAMS_GROUP>
+    <ORIG_TITLE>power, energy, activity</ORIG_TITLE>
+    <NAME>powers</NAME>
+    <SUB_ID>9</SUB_ID>
+    <SUB_IDS>
+     7 1
+     8 2
+     6 2
+    </SUB_IDS>
+    <EDITABLE>0</EDITABLE>
+   </PARAMS_GROUP>
+  </PARAMS_GROUPS_LIST>
+  <EVARS_LIST>
+   <PORT>
+    <EVAR>
+     <SUB_ID>1</SUB_ID>
+     <VARNAME>f1</VARNAME>
+     <TYPE>4</TYPE>
+     <IS_DELTA>0</IS_DELTA>
+     <PRIMARY_PORT>2</PRIMARY_PORT>
+     <PRIMARY_VAR>0</PRIMARY_VAR>
+     <DUP_TYPE>0</DUP_TYPE>
+    </EVAR>
+    <EVAR>
+     <SUB_ID>2</SUB_ID>
+     <TITLE>velocity at port 1</TITLE>
+     <VARNAME>v1</VARNAME>
+     <TYPE>0</TYPE>
+     <IS_DELTA>0</IS_DELTA>
+     <DIMENSION>1</DIMENSION>
+     <IO>1</IO>
+     <UNITS>m/s</UNITS>
+    </EVAR>
+   </PORT>
+   <PORT>
+    <EVAR>
+     <SUB_ID>3</SUB_ID>
+     <TITLE>variable damping</TITLE>
+     <VARNAME>vdamp</VARNAME>
+     <TYPE>0</TYPE>
+     <IS_DELTA>0</IS_DELTA>
+     <DIMENSION>1</DIMENSION>
+     <IO>1</IO>
+     <UNITS>N/(m/s)</UNITS>
+    </EVAR>
+   </PORT>
+   <PORT>
+    <EVAR>
+     <SUB_ID>4</SUB_ID>
+     <TITLE>force at port 3</TITLE>
+     <VARNAME>f3</VARNAME>
+     <TYPE>0</TYPE>
+     <IS_DELTA>0</IS_DELTA>
+     <DIMENSION>1</DIMENSION>
+     <IO>2</IO>
+     <UNITS>N</UNITS>
+    </EVAR>
+    <EVAR>
+     <SUB_ID>5</SUB_ID>
+     <TITLE>velocity at port 3</TITLE>
+     <VARNAME>v3</VARNAME>
+     <TYPE>0</TYPE>
+     <IS_DELTA>0</IS_DELTA>
+     <DIMENSION>1</DIMENSION>
+     <IO>1</IO>
+     <UNITS>m/s</UNITS>
+    </EVAR>
+   </PORT>
+  </EVARS_LIST>
+  <CIR_PORTS_OVER_FRAMEWORK>1</CIR_PORTS_OVER_FRAMEWORK>
+ </SUBMODEL>
+</SPE>

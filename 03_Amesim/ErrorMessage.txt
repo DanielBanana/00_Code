@@ -1,0 +1,16 @@
+Traceback (most recent call last):
+  File "/mnt/c/Users/Z004DP6C/Documents/code_siemens/LowCodeML/framework/Experiments/fmu/Amesim/amehyb_vdp_db.py", line 542, in <module>
+    plac.call(main)
+  File "/home/dloukrezis/py310venv/py310/lib/python3.10/site-packages/plac_core.py", line 436, in call
+    cmd, result = parser.consume(arglist)
+  File "/home/dloukrezis/py310venv/py310/lib/python3.10/site-packages/plac_core.py", line 287, in consume
+    return cmd, self.func(*(args + varargs + extraopts), **kwargs)
+  File "/mnt/c/Users/Z004DP6C/Documents/code_siemens/LowCodeML/framework/Experiments/fmu/Amesim/amehyb_vdp_db.py", line 250, in main
+    Y, X = model(U, globalparam=OrderedDict(zip(["x1"], [x1_values])))
+  File "/home/dloukrezis/py310venv/py310/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1130, in _call_impl
+    return forward_call(*input, **kwargs)
+  File "/mnt/c/Users/Z004DP6C/Documents/code_siemens/LowCodeML/framework/Experiments/fmu/Amesim/amehyb_vdp_db.py", line 87, in forward
+    gpvaluerefs = [self.odemodel._vrs[x_] for x_ in gp.keys()]
+  File "/mnt/c/Users/Z004DP6C/Documents/code_siemens/LowCodeML/framework/Experiments/fmu/Amesim/amehyb_vdp_db.py", line 87, in <listcomp>
+    gpvaluerefs = [self.odemodel._vrs[x_] for x_ in gp.keys()]
+KeyError: 'x1'

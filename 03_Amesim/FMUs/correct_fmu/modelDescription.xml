@@ -1,0 +1,668 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<fmiModelDescription fmiVersion="2.0" modelName="vdp_mec" guid="4216478267" description="Simcenter Amesim model with FMI for model exchange interface" generationTool="Simcenter Amesim 20221.." generationDateAndTime="2023-01-26T11:27:05Z" variableNamingConvention="structured" numberOfEventIndicators="1">
+<ModelExchange modelIdentifier="vdp_mec" needsExecutionTool="false" canBeInstantiatedOnlyOncePerProcess="true" canNotUseMemoryManagementFunctions="true" canGetAndSetFMUstate="false" canSerializeFMUstate="false" providesDirectionalDerivative="true" completedIntegratorStepNotNeeded="false"/>
+<UnitDefinitions>
+  <Unit name="1/m"/>
+  <Unit name="N"/>
+  <Unit name="N/(m/s)"/>
+  <Unit name="N/(m/s)**2"/>
+  <Unit name="N/(mm/s)"/>
+  <Unit name="N/m"/>
+  <Unit name="N/m**2"/>
+  <Unit name="N/mm"/>
+  <Unit name="degree"/>
+  <Unit name="kg"/>
+  <Unit name="m"/>
+  <Unit name="m/s"/>
+  <Unit name="m/s/s"/>
+  <Unit name="mm"/>
+  <Unit name="s"/>
+</UnitDefinitions>
+<DefaultExperiment startTime="0." stopTime="15." tolerance="1e-07"/>
+<ModelVariables>
+  <ScalarVariable name="gravityicon.g" valueReference="0" description="GRAV0 instance 1 value of gravity" causality="local" variability="continuous">
+    <Real unit="m/s/s" min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="1"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="spring01_1.force2" valueReference="1" description="SPR000A instance 1 duplicate of force at port 1" causality="local" variability="continuous">
+    <Real unit="N" min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="2"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="lconnector2_2.fb" valueReference="1" description="LCON13 instance 1 force at port 1" causality="local" variability="continuous">
+    <Real unit="N" min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="3"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="spring01_1.vel2" valueReference="2" description="SPR000A instance 1 velocity at port 2" causality="local" variability="continuous">
+    <Real unit="m/s" min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="4"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="lconnector2_2.vb" valueReference="2" description="LCON13 instance 1 duplicate of velocity at port 3" causality="local" variability="continuous">
+    <Real unit="m/s" min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="5"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="lconnector2_2.xb" valueReference="3" description="LCON13 instance 1 duplicate of displacement port 3" causality="local" variability="continuous">
+    <Real unit="m" min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="6"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="spring01_1.x2" valueReference="3" description="SPR000A instance 1 displacement at port 2" causality="local" variability="continuous">
+    <Real unit="m" min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="7"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="displacementsensor2_1.fordup" valueReference="4" description="MECDS0B instance 1 force at port 1" causality="local" variability="continuous">
+    <Real unit="N" min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="8"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="lconnector2_2.fc" valueReference="4" description="LCON13 instance 1 force at port 2" causality="local" variability="continuous">
+    <Real unit="N" min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="9"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="lconnector2_2.vc" valueReference="5" description="LCON13 instance 1 duplicate of velocity at port 3" causality="local" variability="continuous">
+    <Real unit="m/s" min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="10"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="displacementsensor2_1.v" valueReference="5" description="MECDS0B instance 1 velocity at port 1" causality="local" variability="continuous">
+    <Real unit="m/s" min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="11"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="displacementsensor2_1.x" valueReference="6" description="MECDS0B instance 1 displacement port 1" causality="local" variability="continuous">
+    <Real unit="m" min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="12"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="lconnector2_2.xc" valueReference="6" description="LCON13 instance 1 duplicate of displacement port 3" causality="local" variability="continuous">
+    <Real unit="m" min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="13"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="lconnector2_2.va" valueReference="7" description="LCON13 instance 1 velocity at port 3" causality="local" variability="continuous">
+    <Real unit="m/s" min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="14"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="mass_friction_endstops_1.v1dup" valueReference="7" description="MECMAS21 instance 1 sign reversed duplicate of velocity at port 1" causality="local" variability="continuous">
+    <Real unit="m/s" min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="15"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="lconnector2_2.xa" valueReference="8" description="LCON13 instance 1 displacement port 3" causality="local" variability="continuous">
+    <Real unit="m" min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="16"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="mass_friction_endstops_1.x1dup" valueReference="8" description="MECMAS21 instance 1 sign reversed duplicate of displacement at port 1" causality="local" variability="continuous">
+    <Real unit="m" min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="17"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="mass_friction_endstops_1.acc1dup" valueReference="9" description="MECMAS21 instance 1 sign reversed duplicate of acceleration at port 1" causality="local" variability="continuous">
+    <Real unit="m/s/s" min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="18"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="lconnector2_2.fa" valueReference="10" description="LCON13 instance 1 force at port 3" causality="local" variability="continuous">
+    <Real unit="N" min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="19"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="mass_friction_endstops_1.Fext2" valueReference="10" description="MECMAS21 instance 1 force at port 2" causality="local" variability="continuous">
+    <Real unit="N" min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="20"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="lconnector2_3.fb" valueReference="11" description="LCON13 instance 2 force at port 1" causality="local" variability="continuous">
+    <Real unit="N" min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="21"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="damper02.f1" valueReference="11" description="DAM10N instance 1 duplicate of force at port 3" causality="local" variability="continuous">
+    <Real unit="N" min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="22"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="lconnector2_3.vb" valueReference="12" description="LCON13 instance 2 duplicate of velocity at port 3" causality="local" variability="continuous">
+    <Real unit="m/s" min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="23"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="damper02.v1" valueReference="12" description="DAM10N instance 1 velocity at port 1" causality="local" variability="continuous">
+    <Real unit="m/s" min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="24"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="lconnector2_3.xb" valueReference="13" description="LCON13 instance 2 duplicate of displacement port 3" causality="local" variability="continuous">
+    <Real unit="m" min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="25"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="spring01_1.force1" valueReference="14" description="SPR000A instance 1 force at port 1" causality="local" variability="continuous">
+    <Real unit="N" min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="26"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="lconnector2_3.fc" valueReference="14" description="LCON13 instance 2 force at port 2" causality="local" variability="continuous">
+    <Real unit="N" min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="27"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="lconnector2_3.vc" valueReference="15" description="LCON13 instance 2 duplicate of velocity at port 3" causality="local" variability="continuous">
+    <Real unit="m/s" min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="28"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="spring01_1.vel1" valueReference="15" description="SPR000A instance 1 velocity at port 1" causality="local" variability="continuous">
+    <Real unit="m/s" min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="29"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="spring01_1.x1" valueReference="16" description="SPR000A instance 1 displacement at port 1" causality="local" variability="continuous">
+    <Real unit="m" min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="30"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="lconnector2_3.xc" valueReference="16" description="LCON13 instance 2 duplicate of displacement port 3" causality="local" variability="continuous">
+    <Real unit="m" min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="31"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="zerospeedsource_1.vzero" valueReference="17" description="V001 instance 1 linear velocity (always zero)" causality="local" variability="continuous">
+    <Real unit="m/s" min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="32"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="lconnector2_3.va" valueReference="17" description="LCON13 instance 2 velocity at port 3" causality="local" variability="continuous">
+    <Real unit="m/s" min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="33"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="lconnector2_3.xa" valueReference="18" description="LCON13 instance 2 displacement port 3" causality="local" variability="continuous">
+    <Real unit="m" min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="34"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="zerospeedsource_1.x" valueReference="18" description="V001 instance 1 linear displacement" causality="local" variability="continuous">
+    <Real unit="m" min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="35"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="zerospeedsource_1.azero" valueReference="19" description="V001 instance 1 linear acceleration (always zero)" causality="local" variability="continuous">
+    <Real unit="m/s/s" min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="36"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="lconnector2_3.fa" valueReference="20" description="LCON13 instance 2 force at port 3" causality="local" variability="continuous">
+    <Real unit="N" min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="37"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="mass_friction_endstops_1.acc1" valueReference="23" description="MECMAS21 instance 1 acceleration at port 1" causality="local" variability="continuous">
+    <Real unit="m/s/s" min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="38"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="mass_friction_endstops_1.Fext1" valueReference="24" description="MECMAS21 instance 1 force at port 1" causality="local" variability="continuous">
+    <Real unit="N" min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="39"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="zeroforcesource_2.fzero" valueReference="24" description="F000 instance 1 force (always zero)" causality="local" variability="continuous">
+    <Real unit="N" min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="40"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="mass_friction_endstops_1.Fmin" valueReference="25" description="MECMAS21 instance 1 contact force at lower limit" causality="local" variability="continuous">
+    <Real unit="N" min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="41"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="mass_friction_endstops_1.Fmax" valueReference="26" description="MECMAS21 instance 1 contact force at higher limit" causality="local" variability="continuous">
+    <Real unit="N" min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="42"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="mass_friction_endstops_1.Fvisc" valueReference="27" description="MECMAS21 instance 1 viscous friction force" causality="local" variability="continuous">
+    <Real unit="N" min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="43"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="mass_friction_endstops_1.Ffric" valueReference="28" description="MECMAS21 instance 1 dry friction (stiction/dynamic)" causality="local" variability="continuous">
+    <Real unit="N" min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="44"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="mass_friction_endstops_1.stick" valueReference="29" description="MECMAS21 instance 1 stick flag (1:stick; 0:slip)" causality="local" variability="continuous">
+    <Real min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="45"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="displacementsensor2_1.xsig" valueReference="35" description="MECDS0B instance 1 signal output" causality="local" variability="continuous">
+    <Real min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="46"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="splitter2p2.in3" valueReference="35" description="SPLT0 instance 1 input to junction" causality="local" variability="continuous">
+    <Real min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="47"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="displacementsensor2_1.force" valueReference="36" description="MECDS0B instance 1 force at port 3" causality="local" variability="continuous">
+    <Real unit="N" min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="48"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="damper02.f3" valueReference="36" description="DAM10N instance 1 force at port 3" causality="local" variability="continuous">
+    <Real unit="N" min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="49"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="displacementsensor2_1.vdup" valueReference="37" description="MECDS0B instance 1 velocity at port 3" causality="local" variability="continuous">
+    <Real unit="m/s" min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="50"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="damper02.v3" valueReference="37" description="DAM10N instance 1 velocity at port 3" causality="local" variability="continuous">
+    <Real unit="m/s" min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="51"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="displacementsensor2_1.xdup" valueReference="38" description="MECDS0B instance 1 displacement port 3" causality="local" variability="continuous">
+    <Real unit="m" min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="52"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="spring01_1.x" valueReference="39" description="SPR000A instance 1 spring compression" causality="local" variability="continuous">
+    <Real unit="m" min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="53"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="spring01_1.kval" valueReference="40" description="SPR000A instance 1 spring stiffness value" causality="local" variability="continuous">
+    <Real unit="N/m" min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="54"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="runstats.cpu" valueReference="42" description="RSTAT instance 1 CPU time" causality="local" variability="continuous">
+    <Real unit="s" min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="55"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="runstats.wallTime" valueReference="43" description="RSTAT instance 1 elapsed time" causality="local" variability="continuous">
+    <Real unit="s" min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="56"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="runstats.step" valueReference="44" description="RSTAT instance 1 log 10 current integration step" causality="local" variability="continuous">
+    <Real unit="s" min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="57"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="runstats.minh" valueReference="45" description="RSTAT instance 1 log 10 minimum integration step" causality="local" variability="continuous">
+    <Real unit="s" min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="58"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="runstats.maxh" valueReference="46" description="RSTAT instance 1 log 10 maximum integration step" causality="local" variability="continuous">
+    <Real unit="s" min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="59"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="runstats.minhprint" valueReference="47" description="RSTAT instance 1 log 10 minimum integration step since last print" causality="local" variability="continuous">
+    <Real unit="s" min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="60"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="runstats.maxhprint" valueReference="48" description="RSTAT instance 1 log 10 maximum integration step since last print" causality="local" variability="continuous">
+    <Real unit="s" min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="61"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="runstats.njacs" valueReference="49" description="RSTAT instance 1 current total number of Jacobians" causality="local" variability="continuous">
+    <Real min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="62"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="runstats.nfes" valueReference="50" description="RSTAT instance 1 current total number of function evaluations" causality="local" variability="continuous">
+    <Real min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="63"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="runstats.ndisc" valueReference="51" description="RSTAT instance 1 current total number of discontinuities processed" causality="local" variability="continuous">
+    <Real min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="64"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="runstats.nsteps" valueReference="52" description="RSTAT instance 1 current total number of steps" causality="local" variability="continuous">
+    <Real min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="65"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="runstats.fetime" valueReference="53" description="RSTAT instance 1 mean CPU time per function evaluation" causality="local" variability="continuous">
+    <Real unit="s" min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="66"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="runstats.stime" valueReference="54" description="RSTAT instance 1 mean CPU time per step" causality="local" variability="continuous">
+    <Real unit="s" min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="67"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="runstats.nadams" valueReference="55" description="RSTAT instance 1 total number of Adams steps" causality="local" variability="continuous">
+    <Real min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="68"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="runstats.nbdf" valueReference="56" description="RSTAT instance 1 total number of bdf steps" causality="local" variability="continuous">
+    <Real min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="69"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="runstats.adams_1" valueReference="57" description="RSTAT instance 1 number of Adams steps of order (1)" causality="local" variability="continuous">
+    <Real min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="70"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="runstats.adams_2" valueReference="58" description="RSTAT instance 1 number of Adams steps of order (2)" causality="local" variability="continuous">
+    <Real min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="71"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="runstats.adams_3" valueReference="59" description="RSTAT instance 1 number of Adams steps of order (3)" causality="local" variability="continuous">
+    <Real min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="72"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="runstats.adams_4" valueReference="60" description="RSTAT instance 1 number of Adams steps of order (4)" causality="local" variability="continuous">
+    <Real min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="73"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="runstats.adams_5" valueReference="61" description="RSTAT instance 1 number of Adams steps of order (5)" causality="local" variability="continuous">
+    <Real min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="74"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="runstats.adams_6" valueReference="62" description="RSTAT instance 1 number of Adams steps of order (6)" causality="local" variability="continuous">
+    <Real min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="75"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="runstats.adams_7" valueReference="63" description="RSTAT instance 1 number of Adams steps of order (7)" causality="local" variability="continuous">
+    <Real min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="76"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="runstats.adams_8" valueReference="64" description="RSTAT instance 1 number of Adams steps of order (8)" causality="local" variability="continuous">
+    <Real min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="77"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="runstats.adams_9" valueReference="65" description="RSTAT instance 1 number of Adams steps of order (9)" causality="local" variability="continuous">
+    <Real min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="78"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="runstats.adams_10" valueReference="66" description="RSTAT instance 1 number of Adams steps of order (10)" causality="local" variability="continuous">
+    <Real min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="79"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="runstats.adams_11" valueReference="67" description="RSTAT instance 1 number of Adams steps of order (11)" causality="local" variability="continuous">
+    <Real min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="80"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="runstats.adams_12" valueReference="68" description="RSTAT instance 1 number of Adams steps of order (12)" causality="local" variability="continuous">
+    <Real min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="81"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="runstats.bdf_1" valueReference="69" description="RSTAT instance 1 number of BDF steps of order (1)" causality="local" variability="continuous">
+    <Real min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="82"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="runstats.bdf_2" valueReference="70" description="RSTAT instance 1 number of BDF steps of order (2)" causality="local" variability="continuous">
+    <Real min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="83"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="runstats.bdf_3" valueReference="71" description="RSTAT instance 1 number of BDF steps of order (3)" causality="local" variability="continuous">
+    <Real min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="84"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="runstats.bdf_4" valueReference="72" description="RSTAT instance 1 number of BDF steps of order (4)" causality="local" variability="continuous">
+    <Real min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="85"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="runstats.bdf_5" valueReference="73" description="RSTAT instance 1 number of BDF steps of order (5)" causality="local" variability="continuous">
+    <Real min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="86"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="dynamic_mux2.p3__input" valueReference="74" description="DYNMUX2 instance 1 input at port 3" causality="local" variability="continuous">
+    <Real min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="87"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="fofx.fofx" valueReference="74" description="FX00 instance 1 function of input x" causality="local" variability="continuous">
+    <Real min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="88"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="splitter2p2.out2" valueReference="75" description="SPLT0 instance 1 duplicate of input to junction" causality="local" variability="continuous">
+    <Real min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="89"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="fofx.x" valueReference="75" description="FX00 instance 1 input to f(x)" causality="local" variability="continuous">
+    <Real min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="90"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="splitter2p2.out1" valueReference="76" description="SPLT0 instance 1 duplicate of input to junction" causality="local" variability="continuous">
+    <Real min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="91"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="dynamic_switch.output" valueReference="77" description="DYNSWITCH instance 1 output from switch" causality="local" variability="continuous">
+    <Real min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="92"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="damper02.vdamp" valueReference="77" description="DAM10N instance 1 variable damping" causality="local" variability="continuous">
+    <Real unit="N/(m/s)" min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="93"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="dynamic_mux2.output1" valueReference="78" description="DYNMUX2 instance 1 output at port 1" causality="local" variability="continuous">
+    <Real min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="94"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="dynamic_switch.input1" valueReference="78" description="DYNSWITCH instance 1 input to switch 1" causality="local" variability="continuous">
+    <Real min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="95"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="dynamic_mux2.output2" valueReference="79" description="DYNMUX2 instance 1 output at port 1" causality="local" variability="continuous">
+    <Real min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="96"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="dynamic_switch.input2" valueReference="79" description="DYNSWITCH instance 1 input to switch 2" causality="local" variability="continuous">
+    <Real min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="97"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="dynamic_mux2.p2__input" valueReference="80" description="DYNMUX2 instance 1 input at port 2" causality="local" variability="continuous">
+    <Real min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="98"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="amesim_interface.c" valueReference="134217728" description="AMESIM_INTERFACE instance 1 c" causality="input" variability="continuous">
+    <Real min="-1e+30" max="1e+30" nominal="1." start="0."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="99"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="amesim_interface.x" valueReference="268435456" description="AMESIM_INTERFACE instance 1 x" causality="output" variability="continuous">
+    <Real min="-1e+30" max="1e+30" nominal="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="100"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="mass_friction_endstops_1.v1" valueReference="805306368" description="MECMAS21 instance 1 velocity at port 1" causality="local" variability="continuous">
+    <Real unit="m/s" min="-1e+30" max="1e+30" nominal="1." reinit="true"/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="101"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="mass_friction_endstops_1.x1" valueReference="805306369" description="MECMAS21 instance 1 displacement at port 1" causality="local" variability="continuous">
+    <Real unit="m" min="-1e+30" max="1e+30" nominal="1." reinit="true"/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="102"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="der(mass_friction_endstops_1.v1,1)" valueReference="939524096" description="derivative of MECMAS21 instance 1 velocity at port 1" causality="local" variability="continuous">
+    <Real unit="m/s/s" nominal="1." derivative="101"/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="103"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="der(mass_friction_endstops_1.x1,1)" valueReference="939524097" description="derivative of MECMAS21 instance 1 displacement at port 1" causality="local" variability="continuous">
+    <Real unit="m/s" nominal="1." derivative="102"/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="104"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="gravityicon.fixedg" valueReference="402653184" description="GRAV0 instance 1 constant gravity value" causality="local" variability="fixed" initial="calculated">
+    <Real unit="m/s/s" min="-1e+30" max="1e+30"/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="105"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="gravityicon.gtype" valueReference="402653185" description="GRAV0 instance 1 setting type" causality="parameter" variability="fixed" initial="exact">
+    <Integer min="-2147483648" max="2147483647" start="1"/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="106"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="gravityicon.mode" valueReference="402653186" description="GRAV0 instance 1 data out of range mode" causality="parameter" variability="fixed" initial="exact">
+    <Integer min="-2147483648" max="2147483647" start="1"/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="107"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="gravityicon.disc" valueReference="402653187" description="GRAV0 instance 1 discontinuity handling" causality="parameter" variability="fixed" initial="exact">
+    <Integer min="-2147483648" max="2147483647" start="2"/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="108"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="gravityicon.gfile" valueReference="402653188" description="GRAV0 instance 1 filename for g = f(t)" causality="parameter" variability="fixed" initial="exact">
+    <String start="file.data"/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="109"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="zerospeedsource_1.&apos;#vzero&apos;" valueReference="402653189" description="V001 instance 1 linear velocity (always zero)" causality="parameter" variability="fixed" initial="exact">
+    <Real unit="m/s" min="-1e+30" max="1e+30" start="0."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="110"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="zerospeedsource_1.&apos;#x&apos;" valueReference="402653190" description="V001 instance 1 linear displacement" causality="parameter" variability="fixed" initial="exact">
+    <Real unit="m" min="-1e+30" max="1e+30" start="0."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="111"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="zerospeedsource_1.&apos;#azero&apos;" valueReference="402653191" description="V001 instance 1 linear acceleration (always zero)" causality="parameter" variability="fixed" initial="exact">
+    <Real unit="m/s/s" min="-1e+30" max="1e+30" start="0."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="112"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="zeroforcesource_2.&apos;#fzero&apos;" valueReference="402653192" description="F000 instance 1 force (always zero)" causality="parameter" variability="fixed" initial="exact">
+    <Real unit="N" min="-1e+30" max="1e+30" start="0."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="113"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="mass_friction_endstops_1.mass" valueReference="402653193" description="MECMAS21 instance 1 mass" causality="parameter" variability="fixed" initial="exact">
+    <Real unit="kg" min="-1e+30" max="1e+30" start="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="114"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="mass_friction_endstops_1.fstick" valueReference="402653194" description="MECMAS21 instance 1 stiction force" causality="parameter" variability="fixed" initial="exact">
+    <Real unit="N" min="-1e+30" max="1e+30" start="0."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="115"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="mass_friction_endstops_1.fcoul" valueReference="402653195" description="MECMAS21 instance 1 Coulomb friction force" causality="parameter" variability="fixed" initial="exact">
+    <Real unit="N" min="-1e+30" max="1e+30" start="0."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="116"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="mass_friction_endstops_1.rvisc" valueReference="402653196" description="MECMAS21 instance 1 coefficient of viscous friction" causality="parameter" variability="fixed" initial="exact">
+    <Real unit="N/(m/s)" min="-1e+30" max="1e+30" start="0."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="117"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="mass_friction_endstops_1.wind" valueReference="402653197" description="MECMAS21 instance 1 coefficient of windage" causality="parameter" variability="fixed" initial="exact">
+    <Real unit="N/(m/s)**2" min="-1e+30" max="1e+30" start="0."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="118"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="mass_friction_endstops_1.dvel" valueReference="402653198" description="MECMAS21 instance 1 stick velocity threshold" causality="parameter" variability="fixed" initial="exact">
+    <Real unit="m/s" min="-1e+30" max="1e+30" start="1e-06"/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="119"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="mass_friction_endstops_1.restdvel" valueReference="402653199" description="MECMAS21 instance 1 velocity threshold" causality="parameter" variability="fixed" initial="exact">
+    <Real unit="m/s" min="-1e+30" max="1e+30" start="1e-06"/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="120"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="mass_friction_endstops_1.restcoeff" valueReference="402653200" description="MECMAS21 instance 1 restitution coefficient" causality="parameter" variability="fixed" initial="exact">
+    <Real min="-1e+30" max="1e+30" start="0.65"/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="121"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="mass_friction_endstops_1.astrib" valueReference="402653201" description="MECMAS21 instance 1 Stribeck constant" causality="parameter" variability="fixed" initial="exact">
+    <Real unit="m/s" min="-1e+30" max="1e+30" start="0.001"/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="122"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="mass_friction_endstops_1.xmin" valueReference="402653202" description="MECMAS21 instance 1 lower displacement limit" causality="parameter" variability="fixed" initial="exact">
+    <Real unit="m" min="-1e+30" max="1e+30" start="-1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="123"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="mass_friction_endstops_1.Kbmin" valueReference="402653203" description="MECMAS21 instance 1 lower limit stiffness" causality="parameter" variability="fixed" initial="exact">
+    <Real unit="N/mm" min="-1e+30" max="1e+30" start="1000000."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="124"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="mass_friction_endstops_1.Dbmin" valueReference="402653204" description="MECMAS21 instance 1 lower limit contact damping coefficient" causality="parameter" variability="fixed" initial="exact">
+    <Real unit="N/(mm/s)" min="-1e+30" max="1e+30" start="10."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="125"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="mass_friction_endstops_1.Pdmin" valueReference="402653205" description="MECMAS21 instance 1 lower limit penetration for full damping" causality="parameter" variability="fixed" initial="exact">
+    <Real unit="mm" min="-1e+30" max="1e+30" start="0.1"/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="126"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="mass_friction_endstops_1.xmax" valueReference="402653206" description="MECMAS21 instance 1 higher displacement limit" causality="parameter" variability="fixed" initial="exact">
+    <Real unit="m" min="-1e+30" max="1e+30" start="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="127"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="mass_friction_endstops_1.Kbmax" valueReference="402653207" description="MECMAS21 instance 1 higher limit stiffness" causality="parameter" variability="fixed" initial="exact">
+    <Real unit="N/mm" min="-1e+30" max="1e+30" start="1000000."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="128"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="mass_friction_endstops_1.Dbmax" valueReference="402653208" description="MECMAS21 instance 1 higher limit contact damping coefficient" causality="parameter" variability="fixed" initial="exact">
+    <Real unit="N/(mm/s)" min="-1e+30" max="1e+30" start="10."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="129"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="mass_friction_endstops_1.Pdmax" valueReference="402653209" description="MECMAS21 instance 1 higher limit penetration for full damping" causality="parameter" variability="fixed" initial="exact">
+    <Real unit="mm" min="-1e+30" max="1e+30" start="0.1"/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="130"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="mass_friction_endstops_1.theta" valueReference="402653210" description="MECMAS21 instance 1 inclination (+90 port 1 lowest, -90 port 1 highest)" causality="parameter" variability="fixed" initial="exact">
+    <Real unit="degree" min="-1e+30" max="1e+30" start="-90."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="131"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="mass_friction_endstops_1.useFriction" valueReference="402653211" description="MECMAS21 instance 1 use friction" causality="parameter" variability="fixed" initial="exact">
+    <Integer min="-2147483648" max="2147483647" start="1"/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="132"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="mass_friction_endstops_1.stoptype" valueReference="402653212" description="MECMAS21 instance 1 endstop type" causality="parameter" variability="fixed" initial="exact">
+    <Integer min="-2147483648" max="2147483647" start="4"/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="133"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="mass_friction_endstops_1.discContactOption" valueReference="402653213" description="MECMAS21 instance 1 negative contact force" causality="parameter" variability="fixed" initial="exact">
+    <Integer min="-2147483648" max="2147483647" start="2"/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="134"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="mass_friction_endstops_1.strib" valueReference="402653214" description="MECMAS21 instance 1 Stribeck effect" causality="parameter" variability="fixed" initial="exact">
+    <Integer min="-2147483648" max="2147483647" start="1"/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="135"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="mass_friction_endstops_1.frictionType" valueReference="402653215" description="MECMAS21 instance 1 friction type" causality="parameter" variability="fixed" initial="exact">
+    <Integer min="-2147483648" max="2147483647" start="1"/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="136"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="mass_friction_endstops_1.&apos;#v1&apos;" valueReference="402653216" description="MECMAS21 instance 1 velocity at port 1" causality="parameter" variability="fixed" initial="exact">
+    <Real unit="m/s" min="-1e+30" max="1e+30" start="0."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="137"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="mass_friction_endstops_1.&apos;#x1&apos;" valueReference="402653217" description="MECMAS21 instance 1 displacement at port 1" causality="local" variability="fixed" initial="calculated">
+    <Real unit="m" min="-1e+30" max="1e+30"/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="138"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="displacementsensor2_1.offset" valueReference="402653218" description="MECDS0B instance 1 offset to be subtracted from displacement" causality="parameter" variability="fixed" initial="exact">
+    <Real unit="m" min="-1e+30" max="1e+30" start="0."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="139"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="displacementsensor2_1.gain" valueReference="402653219" description="MECDS0B instance 1 gain for signal output" causality="parameter" variability="fixed" initial="exact">
+    <Real unit="1/m" min="-1e+30" max="1e+30" start="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="140"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="displacementsensor2_1.conv" valueReference="402653220" description="MECDS0B instance 1 sign convention: positive from" causality="parameter" variability="fixed" initial="exact">
+    <Integer min="-2147483648" max="2147483647" start="2"/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="141"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="spring01_1.na" valueReference="402653221" description="SPR000A instance 1 number of active coils" causality="parameter" variability="fixed" initial="exact">
+    <Real min="-1e+30" max="1e+30" start="10."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="142"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="spring01_1.srate" valueReference="402653222" description="SPR000A instance 1 spring rate" causality="parameter" variability="fixed" initial="exact">
+    <Real unit="N/m" min="-1e+30" max="1e+30" start="1."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="143"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="spring01_1.F0" valueReference="402653223" description="SPR000A instance 1 spring force with both displacements zero" causality="parameter" variability="fixed" initial="exact">
+    <Real unit="N" min="-1e+30" max="1e+30" start="0."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="144"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="spring01_1.G" valueReference="402653224" description="SPR000A instance 1 material shear modulus" causality="parameter" variability="fixed" initial="exact">
+    <Real unit="N/m**2" min="-1e+30" max="1e+30" start="85700000000."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="145"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="spring01_1.sdiam" valueReference="402653225" description="SPR000A instance 1 spring diameter" causality="parameter" variability="fixed" initial="exact">
+    <Real unit="mm" min="-1e+30" max="1e+30" start="20."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="146"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="spring01_1.wdiam" valueReference="402653226" description="SPR000A instance 1 wire diameter" causality="parameter" variability="fixed" initial="exact">
+    <Real unit="mm" min="-1e+30" max="1e+30" start="2."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="147"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="spring01_1.stiffmode" valueReference="402653227" description="SPR000A instance 1 spring stiffness mode" causality="parameter" variability="fixed" initial="exact">
+    <Integer min="-2147483648" max="2147483647" start="1"/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="148"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="fofx.outputtype" valueReference="402653228" description="FX00 instance 1 output value" causality="parameter" variability="fixed" initial="exact">
+    <Integer min="-2147483648" max="2147483647" start="1"/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="149"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="fofx.disc" valueReference="402653229" description="FX00 instance 1 discontinuity handling" causality="parameter" variability="fixed" initial="exact">
+    <Integer min="-2147483648" max="2147483647" start="2"/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="150"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="fofx.fstr" valueReference="402653230" description="FX00 instance 1 expression in terms of the input x" causality="parameter" variability="fixed" initial="exact">
+    <String start="-mu*(1-x**2)"/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="151"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="dynamic_switch.index" valueReference="402653231" description="DYNSWITCH instance 1 index of input variable to use as output" causality="local" variability="fixed" initial="calculated">
+    <Integer min="-2147483648" max="2147483647"/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="152"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="dynamic_mux2.merge" valueReference="402653232" description="DYNMUX2 instance 1 merge vector method" causality="parameter" variability="fixed" initial="exact">
+    <Integer min="-2147483648" max="2147483647" start="1"/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="153"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="mu" valueReference="671088640" description="mu" causality="parameter" variability="fixed" initial="exact">
+    <Real min="-1e+30" max="1e+30" start="5."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="154"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="switch_c" valueReference="671088641" description="damper rate from FMU interface (1) or internally computed as mu(1-x^2) (2)" causality="parameter" variability="fixed" initial="exact">
+    <Integer min="-100000" max="100000" start="2"/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="155"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="fixedg" valueReference="671088642" description="constant gravity value" causality="parameter" variability="fixed" initial="exact">
+    <Real unit="m/s/s" min="0." max="1000000." start="0."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="156"/></Tool></Annotations>
+  </ScalarVariable>
+  <ScalarVariable name="x1" valueReference="671088643" description="initial displacement" causality="parameter" variability="fixed" initial="exact">
+    <Real unit="m" min="-1e+30" max="1e+30" start="2."/>
+    <Annotations><Tool name="Amesim"><VarAnnot index="157"/></Tool></Annotations>
+  </ScalarVariable>
+</ModelVariables>
+<ModelStructure>
+  <Outputs>
+    <Unknown index="100" dependencies="99 101 102"/>
+  </Outputs>
+  <Derivatives>
+    <Unknown index="103" dependencies="99 101 102"/>
+    <Unknown index="104" dependencies="99 101 102"/>
+  </Derivatives>
+  <InitialUnknowns>
+    <Unknown index="100" dependencies=""/>
+    <Unknown index="101" dependencies=""/>
+    <Unknown index="102" dependencies=""/>
+    <Unknown index="103" dependencies=""/>
+    <Unknown index="104" dependencies=""/>
+  </InitialUnknowns>
+</ModelStructure>
+</fmiModelDescription>
