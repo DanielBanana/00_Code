@@ -167,6 +167,7 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+00_siemens_env/
 
 # Spyder project settings
 .spyderproject
