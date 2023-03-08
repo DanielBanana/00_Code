@@ -18,6 +18,11 @@ from scipy.optimize import minimize
 import numpy as np
 import shutil
 from matplotlib import pyplot as plt
+import os
+
+from jax.config import config
+config.update("jax_debug_nans", False)
+config.update("jax_enable_x64", True)
 
 
 # def settable_in_instantiated(variable):
@@ -215,6 +220,7 @@ vectorized_dg_dphi_function = jit(jax.vmap(dg_dphi_function, in_axes=(0, 0, None
 def optimisation_wrapper(optimisation_parameters, args):
     '''This is a function wrapper for the optimisation function. It returns the 
     loss and the jacobian'''
+    print(optimisation_parameters)
     t = args[0]
     z0 = args[1]
     z_ref = args[2]
@@ -248,9 +254,9 @@ def optimisation_wrapper(optimisation_parameters, args):
     
     reset_fmu(fmu, model_description, Tstart, Tend)
 
-    print(loss)
-    print(optimisation_parameters)
-
+    # print(f'Loss: {loss}; Mu: {optimisation_parameters}; gradient: {dJ_dphi}')
+    # print(optimisation_parameters)
+    print(dJ_dphi)
     return loss, dJ_dphi
 
 
@@ -261,10 +267,14 @@ if __name__ == '__main__':
     nSteps = 401
     t = np.linspace(Tstart, Tend, nSteps)
     z0 = np.array([1.0, 0.0])
-    optimisation_parameters_ref = np.asarray([5.0])
+    optimisation_parameters_ref = np.asarray([8.53])
     optimisation_parameters = np.asarray([1.0])
+
+    directories = '02_FMPy/04_optimise_mu'
     
     fmu_filename = 'Van_der_Pol_input.fmu'
+
+    fmu_filename = os.path.join(directories, fmu_filename)
 
     fmu, model_description, pointers, vr_states, vr_derivatives, vr_input = prepare_fmu(fmu_filename,  Tstart, Tend)
     number_of_states = model_description.numberOfContinuousStates
@@ -285,7 +295,7 @@ if __name__ == '__main__':
     
     fmu.getReal(vr_input)
     # Sometimes either boundaries have to be defined or the numer of steps has to be increased.
-    res = minimize(optimisation_wrapper, optimisation_parameters, method='CG', jac=True, args=args, bounds=[(0, 10), (0, 10), (0.1, 10)])
+    res = minimize(optimisation_wrapper, optimisation_parameters, method='SLSQP', jac=True, args=args)
     print(res)  
     optimisation_parameters = res.x
 
