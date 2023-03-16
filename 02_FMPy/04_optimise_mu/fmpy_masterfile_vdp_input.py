@@ -19,6 +19,12 @@ import numpy as np
 import shutil
 from matplotlib import pyplot as plt
 import os
+import sys
+# To use the plot_results file we need to add the uppermost folder to the PYTHONPATH
+# Only Works if file gets called from 00_Code
+sys.path.insert(0, os.getcwd())
+from plot_results import plot_results, get_plot_path
+
 
 from jax.config import config
 config.update("jax_debug_nans", False)
@@ -220,7 +226,7 @@ vectorized_dg_dphi_function = jit(jax.vmap(dg_dphi_function, in_axes=(0, 0, None
 def optimisation_wrapper(optimisation_parameters, args):
     '''This is a function wrapper for the optimisation function. It returns the 
     loss and the jacobian'''
-    print(optimisation_parameters)
+    print(f'mu: {optimisation_parameters}')
     t = args[0]
     z0 = args[1]
     z_ref = args[2]
@@ -256,18 +262,18 @@ def optimisation_wrapper(optimisation_parameters, args):
 
     # print(f'Loss: {loss}; Mu: {optimisation_parameters}; gradient: {dJ_dphi}')
     # print(optimisation_parameters)
-    print(dJ_dphi)
+    print(f'Jacobian/Gradient: {dJ_dphi}')
     return loss, dJ_dphi
 
 
 if __name__ == '__main__':
     # mu = float(input('Set mu value: '))
     Tstart = 0.0
-    Tend = 10.0
-    nSteps = 401
+    Tend = 15.0
+    nSteps = 601
     t = np.linspace(Tstart, Tend, nSteps)
     z0 = np.array([1.0, 0.0])
-    optimisation_parameters_ref = np.asarray([8.53])
+    optimisation_parameters_ref = np.asarray([5.0])
     optimisation_parameters = np.asarray([1.0])
 
     directories = '02_FMPy/04_optimise_mu'
@@ -287,6 +293,7 @@ if __name__ == '__main__':
     ax1, ax2 = fig.subplots(2, 1)
     ax1.plot(t, z_ref[:,0])
     ax1.plot(t, z_ref[:,1])
+    ax1.set_title('Reference')
 
 
     args = [t, z0, z_ref, fmu, pointers, number_of_states, vr_derivatives, vr_states, vr_input]
@@ -294,8 +301,9 @@ if __name__ == '__main__':
     fmu, pointers = reset_fmu(fmu, model_description, Tstart, Tend)
     
     fmu.getReal(vr_input)
-    # Sometimes either boundaries have to be defined or the numer of steps has to be increased.
-    res = minimize(optimisation_wrapper, optimisation_parameters, method='SLSQP', jac=True, args=args)
+
+    # Optimisers CG, BFGS, Newton-CG, L-BFGS-B, TNC, SLSQP, dogleg, trust-ncg, trust-krylov, trust-exact and trust-constr
+    res = minimize(optimisation_wrapper, optimisation_parameters, method='BFGS', jac=True, args=args)
     print(res)  
     optimisation_parameters = res.x
 
@@ -305,4 +313,10 @@ if __name__ == '__main__':
 
     ax2.plot(t, z[:,0])
     ax2.plot(t, z[:,1])
+    ax2.set_title('Solution')
     plt.show()
+    fig.savefig('fmu_adjoint.png')
+
+    path = os.path.abspath(__file__)
+    plot_path = get_plot_path(path)
+    plot_results(t, z, z_ref, plot_path)
