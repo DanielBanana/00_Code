@@ -19,6 +19,8 @@ from torch import nn, optim
 from torch.utils.data import DataLoader, Dataset
 from torch.utils.tensorboard import SummaryWriter
 
+
+# Settings for Plotting with Matplotlib
 plt.style.use("bmh")
 plt.rcParams["axes.titlesize"] = "medium"
 plt.rcParams["figure.titlesize"] = "large"
@@ -50,6 +52,18 @@ class Model(nn.Module):
         dt: float,
         solver: OdeSolverType = OdeSolverType.euler,
     ):
+        """Managing class for the whole model needed to run a FMU simulation.
+        It contains an ODE part which is described by a FMU and an additional part
+        which extends the ODE model. It also manages the solution process of the hybrid model.
+
+        Args:
+            odemodel (FmuMEModule): The ODE model in form of an ModelExchange FMU
+            fcnid (nn.Module): The extension to the ODE model, which augments the state given
+                through the ODE. Usually some sort of ML model like a NN. This augmentation is 
+                currently handled as an input to the FMU like a control in a control problem.
+            dt (float): The time step for the ODE solver
+            solver (OdeSolverType, optional): Which solver to use. Defaults to OdeSolverType.euler.
+        """
         super().__init__()
         self.odemodel = odemodel
         self.fcnid = fcnid
@@ -62,6 +76,15 @@ class Model(nn.Module):
         self.physics_parameters.__dict__["mass_friction_endstops_1.xmax"] = 2.1
 
     def forward(self, U, globalparam: dict = {}):
+        """Solve the problem with the current Hybridmodel
+
+        Args:
+            U (_type_): _description_
+            globalparam (dict, optional): _description_. Defaults to {}.
+
+        Returns:
+            _type_: _description_
+        """
         dt = self.dt
         f = lambda u, x, tnow: FmuMEEvaluator.evaluate(
             u,
@@ -204,7 +227,7 @@ def main(
         raise RuntimeError("unknown ode solver specified")
 
     modelname = "vdp_mec"
-    fname_fmu = f"FMUs/{modelname}.fmu.me"
+    fname_fmu = f"03_Amesim/FMUs/{modelname}.fmu.me"
 
     unzipdir = fmpy.extract(fname_fmu)
     model_description = fmpy.read_model_description(fname_fmu)
@@ -250,7 +273,7 @@ def main(
         model = Model(odemodel, fcnid, dt, odesolver)
 
         with torch.no_grad():
-            Y, X = model(U, globalparam=OrderedDict(zip(["spring01_1.x1"], [x1_values])))
+            Y, X = model(U, globalparam=OrderedDict(zip(["mu"], [x1_values])))
         Yref = Y.detach()
         Xref = X.detach()
 
@@ -281,7 +304,7 @@ def main(
 
     model = Model(odemodel, fcnid, dt, odesolver)
 
-    dataset = RefDataset(t, U, Yref, Xref, OrderedDict(x1=x1_values))
+    dataset = RefDataset(t, U, Yref, Xref, OrderedDict(mu=x1_values))
     dataloader = DataLoader(dataset, len(x1_values))
 
     # loss_fcn = nn.L1Loss()
@@ -369,6 +392,7 @@ def main(
                     pass
             if SAVE_STATEDICT:
                 if epoch % 100 == 0:
+                    # Model
                     sd = SimpleNamespace(
                         model=model.state_dict(), optimizer=optimizer.state_dict()
                     )
