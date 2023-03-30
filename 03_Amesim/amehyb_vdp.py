@@ -32,23 +32,20 @@ plt.rcParams["font.size"] = 8
 plt.rcParams["lines.linewidth"] = 1.0
 defclrs = plt.rcParams["axes.prop_cycle"].by_key()["color"]
 
-
 LOAD_STATEDICT = False
 LOAD_STATEDICT_FILENAME = "runs/vdp_mec_constrained/c_fcn_d/sd-run059-00700.pt"
 SAVE_STATEDICT = True
 
-
 torch.set_default_dtype(torch.float64)
-
 
 OdeSolverType = Enum("solver", "euler rk4")
 
 
-class Model(nn.Module):
+class HybridModel(nn.Module):
     def __init__(
         self,
-        odemodel: FmuMEModule,
-        fcnid: nn.Module,
+        ode_model: FmuMEModule,
+        augment_model: nn.Module,
         dt: float,
         solver: OdeSolverType = OdeSolverType.euler,
     ):
@@ -57,96 +54,117 @@ class Model(nn.Module):
         which extends the ODE model. It also manages the solution process of the hybrid model.
 
         Args:
-            odemodel (FmuMEModule): The ODE model in form of an ModelExchange FMU
-            fcnid (nn.Module): The extension to the ODE model, which augments the state given
+            ode_model (FmuMEModule): The ODE model in form of an ModelExchange FMU
+            augment_model (nn.Module): The extension to the ODE model, which augments the state given
                 through the ODE. Usually some sort of ML model like a NN. This augmentation is 
                 currently handled as an input to the FMU like a control in a control problem.
             dt (float): The time step for the ODE solver
             solver (OdeSolverType, optional): Which solver to use. Defaults to OdeSolverType.euler.
         """
         super().__init__()
-        self.odemodel = odemodel
-        self.fcnid = fcnid
+        self.ode_model = ode_model
+        self.augment_model = augment_model
         self.dt = dt
         self.solver = solver
-        # self.physics_parameters = SimpleNamespace()
+
+        # Control the FMU simulation by setting parameters or determining
+        # boundary values.
         self.physics_parameters = SimpleNamespace(switch_c=1)
-        # self.physics_parameters = SimpleNamespace(switch_c=1, x1=2.0)
         self.physics_parameters.__dict__["mass_friction_endstops_1.xmin"] = 2.1
         self.physics_parameters.__dict__["mass_friction_endstops_1.xmax"] = 2.1
 
-    def forward(self, U, globalparam: dict = {}):
+    def forward(self, U, augment_parameters: dict = {}):
         """Solve the problem with the current Hybridmodel
 
         Args:
-            U (_type_): _description_
-            globalparam (dict, optional): _description_. Defaults to {}.
+            U (_type_): Theoretically the values of the augmentation value (the control
+                input values for the FMU). Comes in the form of a tensor from which we
+                currently only use the shape. The actual responses of the datadriven models
+                like NN get calculated during the solution process
+            augment_parameters (dict, optional): Contains the variables of the FMU we control
+                with the augment model. E.g.: For the VdP this is the mu parameter. Defaults to {}.
 
         Returns:
-            _type_: _description_
+            X (_type_): _description_
+            Y (_type_): _description_
         """
         dt = self.dt
         f = lambda u, x, tnow: FmuMEEvaluator.evaluate(
             u,
             x,
-            self.odemodel.fmu,
+            self.ode_model.fmu,
             tnow,
-            self.odemodel.pointers,
-            self.odemodel._ru,
-            self.odemodel._ry,
+            self.ode_model.pointers,
+            self.ode_model._ru,
+            self.ode_model._ry,
         )
+        
+        nr_batches = U.shape[0]
+        nr_steps = U.shape[1]
 
-        X = torch.empty(U.shape[0], U.shape[1], len(self.odemodel._rx))
-        Y = torch.empty(U.shape[0], U.shape[1], len(self.odemodel._ry))
-
-        nrbatches = U.shape[0]
-        gp = OrderedDict(
+        X = torch.empty(nr_batches, nr_steps, len(self.ode_model._rx))
+        Y = torch.empty(nr_batches, nr_steps, len(self.ode_model._ry))
+        
+        # custom_parameters contains all parameters for the FMU, which we want to 
+        # control from the outside. We collect them all now.
+        # First add the physics_parameters.
+        custom_parameters = OrderedDict(
             [
-                (k, [v for _ in range(nrbatches)])
+                (k, [v for _ in range(nr_batches)])
                 for k, v in self.physics_parameters.__dict__.items()
             ]
         )
-        for k, v in globalparam.items():
-            gp[k] = v
-        assert all([len(x_) == nrbatches for x_ in gp.values()])
-        gpvaluerefs = [self.odemodel._vrs[x_] for x_ in gp.keys()]
 
-        for ibatch in range(U.shape[0]):
-            gpvalues = [x_[ibatch] for x_ in gp.values()]
+        # Now we add the parameters from the augment_model; e.g. the mu parameter for VdP
+        for k, v in augment_parameters.items():
+            custom_parameters[k] = v
+        
+        assert all([len(x_) == nr_batches for x_ in custom_parameters.values()])
+        custom_parameters_valuerefs = [self.ode_model._vrs[x_] for x_ in custom_parameters.keys()]
 
-            self.odemodel.fmu_initialize(gpvaluerefs, gpvalues)
-            x = self.odemodel.state
-            y = self.odemodel.output
-            for it, _ in enumerate(U[ibatch]):
+        for batch_iterator in range(nr_batches):
+            custom_parameters_values = [x_[batch_iterator] for x_ in custom_parameters.values()]
+
+            self.ode_model.fmu_initialize(custom_parameters_valuerefs, custom_parameters_values)
+            x = self.ode_model.state
+            y = self.ode_model.output
+            for step_iterator, _ in enumerate(U[batch_iterator]):
                 if self.solver == OdeSolverType.euler:
                     # Euler
-                    u = self.fcnid(y[[0]])
-                    Y[ibatch, it, :] = y
-                    X[ibatch, it, :] = x
-                    self.odemodel.tnow += dt
-                    dx, y = self.odemodel(u, x)
+                    u = self.augment_model(y[[0]])
+                    Y[batch_iterator, step_iterator, :] = y
+                    X[batch_iterator, step_iterator, :] = x
+                    self.ode_model.tnow += dt
+                    dx, y = self.ode_model(u, x)
                     x = x + dt * dx
                 else:
                     # RK4. Call Function.forward only once, as backward will be called
                     # as often (from docs: "Functions are what autograd uses to encode
                     # the operation history and compute gradients.")
-                    u = self.fcnid(y[[0]])
-                    Y[ibatch, it, :] = y
-                    X[ibatch, it, :] = x
+                    u = self.augment_model(y[[0]])
+                    Y[batch_iterator, step_iterator, :] = y
+                    X[batch_iterator, step_iterator, :] = x
 
-                    k1, _ = f(u, x, self.odemodel.tnow)
-                    k2, _ = f(u, x + dt * k1 / 2.0, self.odemodel.tnow + dt / 2.0)
-                    k3, _ = f(u, x + dt * k2 / 2.0, self.odemodel.tnow + dt / 2.0)
-                    self.odemodel.tnow += dt
-                    k4, y = self.odemodel(u, x + dt * k3)
+                    k1, _ = f(u, x, self.ode_model.tnow)
+                    k2, _ = f(u, x + dt * k1 / 2.0, self.ode_model.tnow + dt / 2.0)
+                    k3, _ = f(u, x + dt * k2 / 2.0, self.ode_model.tnow + dt / 2.0)
+                    self.ode_model.tnow += dt
+                    k4, y = self.ode_model(u, x + dt * k3)
                     x = x + 1.0 / 6 * dt * (k1 + 2 * k2 + 2 * k3 + k4)
 
-            self.odemodel.fmu_terminate()
+            self.ode_model.fmu_terminate()
 
         return Y, X
 
 
 class VdP(nn.Module):
+    """Manages the augment model for the Reference solution. This means it
+    contains the real term for the Van der Pol Oscillator which is missing 
+    in the FMU model
+
+    Args:
+        nn (_type_): _description_
+    """
     def __init__(self) -> None:
         super().__init__()
         self.mu = nn.Parameter(torch.ones((1)))
@@ -156,19 +174,19 @@ class VdP(nn.Module):
 
 
 class RefDataset(Dataset):
-    def __init__(self, t, U, Y, X, gp) -> None:
+    def __init__(self, t, U, Y, X, custom_parameters) -> None:
         super().__init__()
         self.t = t
         self.U = U
         self.Y = Y
         self.X = X
-        self.gp = gp
+        self.custom_parameters = custom_parameters
 
     def __getitem__(self, index):
-        gp = self.gp.copy()
-        for k, v in self.gp.items():
-            gp[k] = v[index]
-        return (self.t, self.U[index], self.Y[index], self.X[index], gp)
+        custom_parameters = self.custom_parameters.copy()
+        for k, v in self.custom_parameters.items():
+            custom_parameters[k] = v[index]
+        return (self.t, self.U[index], self.Y[index], self.X[index], custom_parameters)
 
     def __len__(self):
         return self.U.shape[0]
@@ -205,15 +223,16 @@ def next_run_nr(path: typing.AnyStr) -> int:
 # @plac.pos("modelname", "model name", choices=["vdp_mec", "vdp_mec_constrained"])
 @plac.pos("case", "optimization case", choices=["c_fcn_d", "mu", "constant"])
 @plac.opt("learningrate", "learning rate", type=float)
-@plac.opt("nrepochs", "number of epochs", type=int)
+@plac.opt("nr_epochs", "number of epochs", type=int)
 @plac.opt("solver", "ODE solver", type=str)
 @plac.opt("timestep", "ODE solver time step", type=float)
 # @plac.pos("loss_includes_state", "state included in loss computation", type=bool)
+
 def main(
     # modelname,
     case='c_fcn_d',
     learningrate=0.1,
-    nrepochs=100,
+    nr_epochs=100,
     solver="euler",
     timestep=1e-2,
     state_in_loss=False,
@@ -239,8 +258,8 @@ def main(
         instanceName=pathlib.Path(fname_fmu).with_suffix("").name,
     )
 
-    odemodel = FmuMEModule(fmu, model_description, verbose=False, logging=False)
-    odemodel.eval()
+    ode_model = FmuMEModule(fmu, model_description, verbose=False, logging=False)
+    ode_model.eval()
 
     tend = 15.0
     dt = timestep
@@ -252,13 +271,13 @@ def main(
     # x1_values = ((torch.arange(4.)/3)**2*2)[1:].tolist()  # don't start at 0; will not move
     # x1_values = torch.tensor([1.5, 2.0, 2.2])
     x1_values = torch.tensor([2.0])
-    U = torch.zeros((len(x1_values), t.size, len(odemodel._ru)))
+    U = torch.zeros((len(x1_values), t.size, len(ode_model._ru)))
 
     # in co-sim result is slightly different, so use that for now
     if False:
         # reference simulation: built-in VdP damping definition
-        fcnid = lambda u: torch.tensor([0.0])
-        model = Model(odemodel, fcnid, dt, odesolver)
+        augment_model = lambda u: torch.tensor([0.0])
+        model = HybridModel(ode_model, augment_model, dt, odesolver)
         model.physics_parameters.switch_c = int(2)
 
         # execute a reference simulation
@@ -268,19 +287,19 @@ def main(
         Xref = X.detach()
     else:
         # execute a reference simulation with a hybrid model
-        fcnid = VdP()
-        fcnid.mu.data[0] = torch.tensor(5.0)
-        model = Model(odemodel, fcnid, dt, odesolver)
+        augment_model = VdP()
+        augment_model.mu.data[0] = torch.tensor(5.0)
+        model = HybridModel(ode_model, augment_model, dt, odesolver)
 
         with torch.no_grad():
-            Y, X = model(U, globalparam=OrderedDict(zip(["mu"], [x1_values])))
+            Y, X = model(U, augment_parameters=OrderedDict(zip(["mu"], [x1_values])))
         Yref = Y.detach()
         Xref = X.detach()
 
     # set up the hybrid model to be trained
     if case == "c_fcn_d":
         # define a NN that is going to identify the damper rate
-        fcnid = nn.Sequential(
+        augment_model = nn.Sequential(
             nn.Linear(1, 3),
             # nn.Linear(1, 10),
             nn.Linear(3, 6),
@@ -288,8 +307,8 @@ def main(
             nn.Linear(6, 1)
         )
     elif case == "mu":
-        fcnid = VdP()
-        fcnid.mu.data[0] = torch.tensor(5.0)
+        augment_model = VdP()
+        augment_model.mu.data[0] = torch.tensor(5.0)
     elif case == "constant":
 
         class Constant(nn.Module):
@@ -300,9 +319,9 @@ def main(
             def forward(self, U):
                 return self.p
 
-        fcnid = Constant()
+        augment_model = Constant()
 
-    model = Model(odemodel, fcnid, dt, odesolver)
+    model = HybridModel(ode_model, augment_model, dt, odesolver)
 
     dataset = RefDataset(t, U, Yref, Xref, OrderedDict(mu=x1_values))
     dataloader = DataLoader(dataset, len(x1_values))
@@ -318,7 +337,7 @@ def main(
 
     # initial guess when estimating mu
     if case == "mu":
-        model.fcnid.mu.data[0] = torch.tensor(3.0)
+        model.augment_model.mu.data[0] = torch.tensor(3.0)
 
     if LOAD_STATEDICT:
         sd = torch.load(LOAD_STATEDICT_FILENAME)
@@ -341,11 +360,11 @@ def main(
     def training_loop(dataloader, model, loss_fcn, optimizer):
         # not using the dataloader for now; all batches at once
         if not state_in_loss:
-            Ypred, _ = model(dataloader.dataset.U, dataloader.dataset.gp)
+            Ypred, _ = model(dataloader.dataset.U, dataloader.dataset.custom_parameters)
             loss = loss_fcn(Ypred, dataloader.dataset.Y)
 
         else:
-            Ypred, Xpred = model(dataloader.dataset.U, dataloader.dataset.gp)
+            Ypred, Xpred = model(dataloader.dataset.U, dataloader.dataset.custom_parameters)
             loss = loss_fcn(
                 torch.cat((Ypred, Xpred), dim=2),
                 torch.cat((dataloader.dataset.Y, dataloader.dataset.X), dim=2),
@@ -357,7 +376,7 @@ def main(
             # closure should clear the gradients, compute the loss, and return it
             def closure():
                 optimizer.zero_grad()
-                Ypred, _ = model(dataloader.dataset.U, dataloader.dataset.gp)
+                Ypred, _ = model(dataloader.dataset.U, dataloader.dataset.custom_parameters)
                 loss = loss_fcn(Ypred, dataloader.dataset.Y)
                 loss.backward()
                 return loss
@@ -370,7 +389,7 @@ def main(
 
     flag = GracefulExiter()
     # loss_history = []
-    with tqdm.tqdm(range(nrepochs)) as t:
+    with tqdm.tqdm(range(nr_epochs)) as t:
         t.set_description(f"{case}:{run_nr:03d}")
         for epoch in t:
             epoch_loss = training_loop(dataloader, model, loss_fcn, optimizer)
@@ -382,10 +401,10 @@ def main(
                     # case best to decrease the frequency at which this is called)
                     writer.add_scalar("Epoch loss", epoch_loss, epoch)
                     if case == "mu":
-                        writer.add_scalar("mu", float(model.fcnid.mu.data[0]), epoch)
+                        writer.add_scalar("mu", float(model.augment_model.mu.data[0]), epoch)
                     if case == "constant":
                         writer.add_scalar(
-                            "constant", float(model.fcnid.p.data[0]), epoch
+                            "constant", float(model.augment_model.p.data[0]), epoch
                         )
                     writer.flush()
                 except:
@@ -418,10 +437,10 @@ def main(
 # def junk():
 #
 #     d = (torch.arange(201.0) / 100 - 1) * 2
-#     fcnid_ref = VdP()
-#     fcnid_ref.mu.data[0] = torch.tensor(5.0)
+#     augment_model_ref = VdP()
+#     augment_model_ref.mu.data[0] = torch.tensor(5.0)
 #     with torch.no_grad():
-#         cref = fcnid_ref(d)
+#         cref = augment_model_ref(d)
 #
 #     fnames = [
 #         # "sd-run059-02000.pt",
@@ -438,16 +457,16 @@ def main(
 #         model.load_state_dict(sd.model)
 #         with torch.no_grad():
 #             # U = dataset.U[[0],:,:]
-#             # gp = OrderedDict([(k, [v[-1]]) for k, v in dataset.gp.items()])
-#             Ypred, Xpred = model(dataset.U, dataset.gp)
+#             # custom_parameters = OrderedDict([(k, [v[-1]]) for k, v in dataset.custom_parameters.items()])
+#             Ypred, Xpred = model(dataset.U, dataset.custom_parameters)
 #             pred[fname]["Y"] = Ypred
 #             pred[fname]["X"] = Xpred
-#             pred[fname]["c"] = model.fcnid(d[None, :, None])[0, :, 0]
+#             pred[fname]["c"] = model.augment_model(d[None, :, None])[0, :, 0]
 #
 #     # time domain output
 #     fig, ax = plt.subplots(1, Yref.shape[0], sharex=True, sharey=True, squeeze=False)
 #     for c in range(Yref.shape[0]):
-#         ax[0, c].set_title("x1={:.2f}".format(dataset.gp["x1"][c]))
+#         ax[0, c].set_title("x1={:.2f}".format(dataset.custom_parameters["x1"][c]))
 #         ax[0, c].set_xlabel("time [s]")
 #     ax[0, 0].set_ylabel("displacement [m]")
 #     for c in range(Yref.shape[0]):
@@ -473,7 +492,7 @@ def main(
 #     # phase portrait
 #     fig, ax = plt.subplots(1, Yref.shape[0], sharex=True, squeeze=False)
 #     for c in range(Yref.shape[0]):
-#         ax[0, c].set_title("x1={:.2f}".format(dataset.gp["x1"][c]))
+#         ax[0, c].set_title("x1={:.2f}".format(dataset.custom_parameters["x1"][c]))
 #         ax[0, c].set_xlabel("displacement [m]")
 #     ax[0, 0].set_ylabel("velocity [m/s]")
 #     for c in range(Yref.shape[0]):
@@ -492,7 +511,7 @@ def main(
 #         Xref.shape[2], Yref.shape[0], sharex=True, sharey="row", squeeze=False
 #     )
 #     for c in range(Xref.shape[0]):
-#         ax[0, c].set_title("x1={:.2f}".format(dataset.gp["x1"][c]))
+#         ax[0, c].set_title("x1={:.2f}".format(dataset.custom_parameters["x1"][c]))
 #         ax[-1, c].set_xlabel("time [s]")
 #     ax[0, 0].set_ylabel("displacement [m]")
 #     ax[1, 0].set_ylabel("velocity [m/s]")
