@@ -14,3 +14,5 @@ Also implements hybrid modelling approaches in combination with the FMUs
 03_Amesim
 Contains the implementation of hybrid modeling with FMU by a previous worker at Siemens. Given to me by
 Dirk. Currently does not work, but shouldn't be too hard to fix.
+
+test
