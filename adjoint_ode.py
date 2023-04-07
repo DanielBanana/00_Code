@@ -196,110 +196,110 @@ if __name__ == '__main__':
     ###########
     #### (1) Finite Differences for loss_function at end
     ##########
-    # time_finite_differences__at_end = time.time_ns()
+    time_finite_differences__at_end = time.time_ns()
 
-    # eps = 1.0e-4
-    # d_J__d_theta__at_end__finite_differences = np.empty((1, 4))
-    # for i in range(4):
-    #     parameters_guess_augmented = copy.deepcopy(parameters_guess)
-    #     parameters_guess_augmented[0][i] += eps
+    eps = 1.0e-4
+    d_J__d_theta__at_end__finite_differences = np.empty((1, 4))
+    for i in range(4):
+        parameters_guess_augmented = copy.deepcopy(parameters_guess)
+        parameters_guess_augmented[0][i] += eps
 
-    #     y_augmented_at_t = integrate.solve_ivp(
-    #         fun=model, 
-    #         t_span=integration_horizon,
-    #         y0=initital_condition,
-    #         t_eval=t_discrete,
-    #         args=parameters_guess_augmented
-    #     )["y"]
+        y_augmented_at_t = integrate.solve_ivp(
+            fun=model, 
+            t_span=integration_horizon,
+            y0=initital_condition,
+            t_eval=t_discrete,
+            args=parameters_guess_augmented
+        )["y"]
 
-    #     J_augmented_at_end = loss_function_at_end(y_augmented_at_t, parameters_guess_augmented)
+        J_augmented_at_end = loss_function_at_end(y_augmented_at_t, parameters_guess_augmented)
 
-    #     d_J__d_theta__at_end__finite_differences[0, i] = (
-    #         J_augmented_at_end - J_at_end
-    #     ) / eps
+        d_J__d_theta__at_end__finite_differences[0, i] = (
+            J_augmented_at_end - J_at_end
+        ) / eps
     
-    # time_finite_differences__at_end = time.time_ns() - time_finite_differences__at_end
+    time_finite_differences__at_end = time.time_ns() - time_finite_differences__at_end
     
-    # ###########
-    # #### (2) Finite Differences for loss_function over entire trajectory
-    # ##########
+    ###########
+    #### (2) Finite Differences for loss_function over entire trajectory
+    ##########
 
-    # eps = 1.0e-4
-    # d_J__d_theta__entire_trajectory__finite_differences = np.empty((1, 4))
-    # for i in range(4):
-    #     parameters_guess_augmented = copy.deepcopy(parameters_guess)
-    #     parameters_guess_augmented[0][i] += eps
+    eps = 1.0e-4
+    d_J__d_theta__entire_trajectory__finite_differences = np.empty((1, 4))
+    for i in range(4):
+        parameters_guess_augmented = copy.deepcopy(parameters_guess)
+        parameters_guess_augmented[0][i] += eps
 
-    #     y_augmented_at_t = integrate.solve_ivp(
-    #         fun=model, 
-    #         t_span=integration_horizon,
-    #         y0=initital_condition,
-    #         t_eval=t_discrete,
-    #         args=parameters_guess_augmented
-    #     )["y"]
+        y_augmented_at_t = integrate.solve_ivp(
+            fun=model, 
+            t_span=integration_horizon,
+            y0=initital_condition,
+            t_eval=t_discrete,
+            args=parameters_guess_augmented
+        )["y"]
 
-    #     J_augmented_entire_trajectory = loss_function_entire_trajectory(y_augmented_at_t, parameters_guess_augmented)
+        J_augmented_entire_trajectory = loss_function_entire_trajectory(y_augmented_at_t, parameters_guess_augmented)
 
-    #     d_J__d_theta__entire_trajectory__finite_differences[0, i] = (
-    #         J_augmented_entire_trajectory - J_entire_trajectory
-    #     ) / eps
+        d_J__d_theta__entire_trajectory__finite_differences[0, i] = (
+            J_augmented_entire_trajectory - J_entire_trajectory
+        ) / eps
 
-    ########################
-    ########################
-    ##### Forward Sensitivities
-    ########################
-    ########################
+    #######################
+    #######################
+    #### Forward Sensitivities
+    #######################
+    #######################
+
+    #####
+    ## (1.1) Using an additional trajectory co-developed, loss function at end
+    #####
+
+    time_forward__at_end = time.time_ns()
+    # We can not integrate over a two-array object. Therefore it has to be a flattened vector.
+    ic_forward_sensitivities = jnp.zeros((2, 5))
+    ic_forward_sensitivities = ic_forward_sensitivities.at[:, 0].set(initital_condition).flatten()
+    solution_and_solution_sensitivities_at_t = integrate.solve_ivp(
+        fun=forward_sensitivity_model, 
+        t_span=integration_horizon,
+        y0=ic_forward_sensitivities,
+        t_eval=t_discrete,
+        args=parameters_guess,
+    )["y"].reshape((2, 5, time_points_inbetween))
+
+    solution_sensitivities_at_t = solution_and_solution_sensitivities_at_t[:, 1:, :]
+    
+    del_J__del_u_at_end = (y_at_t[:, -1] - y_at_t_ref[:, -1]).T
+    d_u__d_theta_at_end = solution_sensitivities_at_t[:, :, -1]
+
+    d_J__d_theta__at_end__forward = (del_J__del_u_at_end @ d_u__d_theta_at_end).reshape((1, -1))
+
+    time_forward__at_end = time.time_ns() - time_forward__at_end
+
 
     ######
-    ### (1.1) Using an additional trajectory co-developed, loss function at end
+    ### (1.2) Using an additional trajectory co-developed, loss function over entire trajectory
     ######
 
-    # time_forward__at_end = time.time_ns()
-    # # We can not integrate over a two-array object. Therefore it has to be a flattened vector.
-    # ic_forward_sensitivities = jnp.zeros((2, 5))
-    # ic_forward_sensitivities = ic_forward_sensitivities.at[:, 0].set(initital_condition).flatten()
-    # solution_and_solution_sensitivities_at_t = integrate.solve_ivp(
-    #     fun=forward_sensitivity_model, 
-    #     t_span=integration_horizon,
-    #     y0=ic_forward_sensitivities,
-    #     t_eval=t_discrete,
-    #     args=parameters_guess,
-    # )["y"].reshape((2, 5, time_points_inbetween))
+    # We can just reuse the solution sensitivities from before
+    #
+    # d_u__d_theta has the shape (n_dim, n_params, n_time_points) 
+    d_u__d_theta__entire_trajectory = solution_sensitivities_at_t
+    # del_J__del_u has the shape (1, n_dim, n_time_points)  - the leading 1
+    # (i.e. a proxy axis) is required in order to mimic the batch of row vectors
+    del_J__del_u__entire_trajectory = (y_at_t - y_at_t_ref).reshape((1, 2, time_points_inbetween))
 
-    # solution_sensitivities_at_t = solution_and_solution_sensitivities_at_t[:, 1:, :]
-    
-    # del_J__del_u_at_end = (y_at_t[:, -1] - y_at_t_ref[:, -1]).T
-    # d_u__d_theta_at_end = solution_sensitivities_at_t[:, :, -1]
+    d_j__d_theta__entire_trajectory = np.einsum(
+        "EiN,iPN->EPN",
+        del_J__del_u__entire_trajectory,
+        d_u__d_theta__entire_trajectory,
+    )
 
-    # d_J__d_theta__at_end__forward = (del_J__del_u_at_end @ d_u__d_theta_at_end).reshape((1, -1))
-
-    # time_forward__at_end = time.time_ns() - time_forward__at_end
-
-
-    # ######
-    # ### (1.2) Using an additional trajectory co-developed, loss function over entire trajectory
-    # ######
-
-    # # We can just reuse the solution sensitivities from before
-    # #
-    # # d_u__d_theta has the shape (n_dim, n_params, n_time_points) 
-    # d_u__d_theta__entire_trajectory = solution_sensitivities_at_t
-    # # del_J__del_u has the shape (1, n_dim, n_time_points)  - the leading 1
-    # # (i.e. a proxy axis) is required in order to mimic the batch of row vectors
-    # del_J__del_u__entire_trajectory = (y_at_t - y_at_t_ref).reshape((1, 2, time_points_inbetween))
-
-    # d_j__d_theta__entire_trajectory = np.einsum(
-    #     "EiN,iPN->EPN",
-    #     del_J__del_u__entire_trajectory,
-    #     d_u__d_theta__entire_trajectory,
-    # )
-
-    # # Integrate d_j__d_theta over entire trajectory to obtain d_J__d_theta
-    # d_J__d_theta__entire_trajectory__forward = integrate.trapezoid(
-    #     d_j__d_theta__entire_trajectory,
-    #     t_discrete,
-    #     axis=-1,
-    # )
+    # Integrate d_j__d_theta over entire trajectory to obtain d_J__d_theta
+    d_J__d_theta__entire_trajectory__forward = integrate.trapezoid(
+        d_j__d_theta__entire_trajectory,
+        t_discrete,
+        axis=-1,
+    )
 
 
     ########################
@@ -416,74 +416,74 @@ if __name__ == '__main__':
     #### Post-Processing
     ###########
 
-    # # Calculates how far the gradients are away from each other
-    # collection_of_gradients__at_end = {
-    #     "finite_differences": d_J__d_theta__at_end__finite_differences,
-    #     "forward": d_J__d_theta__at_end__forward,
-    #     "adjoint": d_J__d_theta__at_end__adjoint,
-    # }
-    # gradients_distances__at_end = metrics.pairwise_distances(
-    #     np.concatenate(list(collection_of_gradients__at_end.values()), axis=0)
-    # )
+    # Calculates how far the gradients are away from each other
+    collection_of_gradients__at_end = {
+        "finite_differences": d_J__d_theta__at_end__finite_differences,
+        "forward": d_J__d_theta__at_end__forward,
+        "adjoint": d_J__d_theta__at_end__adjoint,
+    }
+    gradients_distances__at_end = metrics.pairwise_distances(
+        np.concatenate(list(collection_of_gradients__at_end.values()), axis=0)
+    )
 
-    # collection_of_gradients__entire_trajectory = {
-    #     "finite_differences": d_J__d_theta__entire_trajectory__finite_differences,
-    #     "forward": d_J__d_theta__entire_trajectory__forward,
-    #     "adjoint": d_J__d_theta__entire_trajectory__adjoint,
-    # }
-    # gradients_distances__entire_trajectory = metrics.pairwise_distances(
-    #     np.concatenate(list(collection_of_gradients__entire_trajectory.values()), axis=0)
-    # )
+    collection_of_gradients__entire_trajectory = {
+        "finite_differences": d_J__d_theta__entire_trajectory__finite_differences,
+        "forward": d_J__d_theta__entire_trajectory__forward,
+        "adjoint": d_J__d_theta__entire_trajectory__adjoint,
+    }
+    gradients_distances__entire_trajectory = metrics.pairwise_distances(
+        np.concatenate(list(collection_of_gradients__entire_trajectory.values()), axis=0)
+    )
 
-    ###########
-    #### Resporting
-    ###########
+    ##########
+    ### Resporting
+    ##########
 
-    # print("----- Setup ------")
-    # print("Time Domain: ", integration_horizon)
-    # print("Number of discretization points: ", time_points_inbetween)
+    print("----- Setup ------")
+    print("Time Domain: ", integration_horizon)
+    print("Number of discretization points: ", time_points_inbetween)
     
-    # print()
-    # print("----- Loss Values ------")
-    # print("Quadratic loss using the parameters guessed (classical solution) at end only")
-    # print(J_at_end)
-    # print("Quadratic Loss using the parameters guessed (classical solution) over entire trajectory")
-    # print(J_entire_trajectory)
-    # print("Quadratic Loss using the parameters guessed (reverse classical solution) over entire trajectory")
-    # print(J_entire_trajectory__reverse_classical_solve)
+    print()
+    print("----- Loss Values ------")
+    print("Quadratic loss using the parameters guessed (classical solution) at end only")
+    print(J_at_end)
+    print("Quadratic Loss using the parameters guessed (classical solution) over entire trajectory")
+    print(J_entire_trajectory)
+    print("Quadratic Loss using the parameters guessed (reverse classical solution) over entire trajectory")
+    print(J_entire_trajectory__reverse_classical_solve)
 
-    # print()
-    # print("----- Loss sensitivities -----")
-    # print("-> Loss Function end only")
-    # print("Finite Differences")
-    # print(d_J__d_theta__at_end__finite_differences)
-    # print("Forward Method")
-    # print(d_J__d_theta__at_end__forward)
-    # print("Adjoint Method")
-    # print(d_J__d_theta__at_end__adjoint)
-    # print("Distances of Gradients")
-    # print(gradients_distances__at_end)
-    # print("-> Loss Function entire trajectory")
-    # print("Finite Differences")
-    # print(d_J__d_theta__entire_trajectory__finite_differences)
-    # print("Forward Method")
-    # print(d_J__d_theta__entire_trajectory__forward)
-    # print("Adjoint Method")
-    # print(d_J__d_theta__entire_trajectory__adjoint)
-    # print("Distances of Gradients")
-    # print(gradients_distances__entire_trajectory)
+    print()
+    print("----- Loss sensitivities -----")
+    print("-> Loss Function end only")
+    print("Finite Differences")
+    print(d_J__d_theta__at_end__finite_differences)
+    print("Forward Method")
+    print(d_J__d_theta__at_end__forward)
+    print("Adjoint Method")
+    print(d_J__d_theta__at_end__adjoint)
+    print("Distances of Gradients")
+    print(gradients_distances__at_end)
+    print("-> Loss Function entire trajectory")
+    print("Finite Differences")
+    print(d_J__d_theta__entire_trajectory__finite_differences)
+    print("Forward Method")
+    print(d_J__d_theta__entire_trajectory__forward)
+    print("Adjoint Method")
+    print(d_J__d_theta__entire_trajectory__adjoint)
+    print("Distances of Gradients")
+    print(gradients_distances__entire_trajectory)
 
-    # print()
-    # print("----- Timings ----- [ns] - lower is better")
-    # print("Classical Solve")
-    # print(time_classical_problem)
-    # print("-> Loss Function end only")
-    # print("Finite Differences")
-    # print(time_finite_differences__at_end)
-    # print("Forward Method")
-    # print(time_forward__at_end)
-    # print("Adjoint Method")
-    # print(time_adjoint__at_end)
+    print()
+    print("----- Timings ----- [ns] - lower is better")
+    print("Classical Solve")
+    print(time_classical_problem)
+    print("-> Loss Function end only")
+    print("Finite Differences")
+    print(time_finite_differences__at_end)
+    print("Forward Method")
+    print(time_forward__at_end)
+    print("Adjoint Method")
+    print(time_adjoint__at_end)
 
 
     # Plots
