@@ -9,6 +9,7 @@ import shutil
 import ctypes
 from types import SimpleNamespace
 from matplotlib import pyplot as plt
+import os
 
 def settable_in_instantiated(variable):
     return variable.causality == 'input' \
@@ -20,13 +21,16 @@ def damping_function(x, v, mu):
 def simulate_custom_input(mu = 8.53):
     # define the model name and simulation parameters
     fmu_filename = 'Van_der_Pol_input.fmu'
+    path = os.path.abspath(__file__)
+    fmu_filename = '/'.join(path.split('/')[:-1]) + '/' + fmu_filename
     Tstart = 0.0
     Tend = 100.0
     nSteps = 20000
     dt = (Tend - Tstart)/(nSteps)
     Tspan = np.linspace(Tstart+dt, Tend, nSteps)
+
+    # Readout the model description and load the fmu into python
     model_description = read_model_description(fmu_filename)
-    # extract the FMU
     unzipdir = extract(fmu_filename)
     fmu = fmpy.fmi2.FMU2Model(guid=model_description.guid,
                     unzipDirectory=unzipdir,
@@ -114,7 +118,7 @@ def simulate_custom_input(mu = 8.53):
 
             # enter Continuous-Time Mode
             fmu.enterContinuousTimeMode()
-            
+
             # retrieve solution at simulation (re)start
             pass
 
@@ -122,7 +126,7 @@ def simulate_custom_input(mu = 8.53):
             # the model signals a value change of states, retrieve them
             # In this simple example we don't need to check that; it changes every iteration
             status = fmu.getContinuousStates(pointers._px, pointers.x.size)
-            
+
         if time >= Tend:
             break
         # compute derivatives
@@ -134,7 +138,7 @@ def simulate_custom_input(mu = 8.53):
         # set continuous inputs at t = time
         # damping_value = damping_function(pointers.x[0], pointers.x[1], _lambda)
         fmu.setReal([vr_input], [mu])
-        
+
         # set states at t = time and perform one setp
         pointers.x += dt * pointers.dx
         x_history.append(pointers.x.copy())
@@ -161,7 +165,7 @@ def simulate_custom_input(mu = 8.53):
 
         if terminateSimulation:
             break
-    
+
     # print('ODE: dx/dt = 10*x')
     x_history = np.asarray(x_history).T
 

@@ -9,6 +9,7 @@ import shutil
 import ctypes
 from types import SimpleNamespace
 from matplotlib import pyplot as plt
+import os
 
 def settable_in_instantiated(variable):
     return variable.causality == 'input' \
@@ -20,13 +21,16 @@ def damping_function(x, v, mu):
 def custom_damping(mu = 8.53):
     # define the model name and simulation parameters
     fmu_filename = 'Van_der_Pol_damping_input.fmu'
+    path = os.path.abspath(__file__)
+    fmu_filename = '/'.join(path.split('/')[:-1]) + '/' + fmu_filename
     Tstart = 0.0
     Tend = 100.0
     nSteps = 20000
     dt = (Tend - Tstart)/(nSteps)
     Tspan = np.linspace(Tstart+dt, Tend, nSteps)
+
+    # Readout the model description and load the fmu into python
     model_description = read_model_description(fmu_filename)
-    # extract the FMU
     unzipdir = extract(fmu_filename)
     fmu = fmpy.fmi2.FMU2Model(guid=model_description.guid,
                     unzipDirectory=unzipdir,
@@ -34,7 +38,7 @@ def custom_damping(mu = 8.53):
                     instanceName='instance1')
     eventInfo = fmpy.fmi2.fmi2EventInfo()
 
-    # instantiate
+    # instantiate, always needs to happen at the start
     fmu.instantiate()
 
     # set the start time
@@ -53,8 +57,7 @@ def custom_damping(mu = 8.53):
 
     fmu.exitInitializationMode()
 
-
-
+    # Prepare working with the fmu
     nx = model_description.numberOfContinuousStates
     nz = model_description.numberOfEventIndicators
     initialEventMode = False
@@ -92,10 +95,6 @@ def custom_damping(mu = 8.53):
     vr_derivatives = [vrs['der(u)'], vrs['der(v)']]
     vr_input = vrs['damping']
 
-
-    # retrieve solution at t=Tstart, for example, for outputs
-    # y = fmu.getReal([vr_outputs])
-
     fmu.enterContinuousTimeMode()
 
     x_history = [pointers.x.copy()]
@@ -110,7 +109,7 @@ def custom_damping(mu = 8.53):
 
             # enter Continuous-Time Mode
             fmu.enterContinuousTimeMode()
-            
+
             # retrieve solution at simulation (re)start
             pass
 
@@ -118,7 +117,7 @@ def custom_damping(mu = 8.53):
             # the model signals a value change of states, retrieve them
             # In this simple example we don't need to check that; it changes every iteration
             status = fmu.getContinuousStates(pointers._px, pointers.x.size)
-            
+
         if time >= Tend:
             break
         # compute derivatives
@@ -157,7 +156,7 @@ def custom_damping(mu = 8.53):
 
         if terminateSimulation:
             break
-    
+
     # print('ODE: dx/dt = 10*x')
     x_history = np.asarray(x_history).T
 
@@ -168,9 +167,6 @@ def custom_damping(mu = 8.53):
     ax2.plot(Tspan, x_history[1])
     plt.show()
     fig.savefig('Van_der_Pol_input_damping.png')
-
-
-    # J = fmu.getDirectionalDerivative(vUnknown_ref=[vr_derivatives], vKnown_ref=[vr_states], dvKnown=[1.0])
 
 
 if __name__ == '__main__':

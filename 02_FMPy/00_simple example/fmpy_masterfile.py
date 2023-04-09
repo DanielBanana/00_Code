@@ -9,22 +9,25 @@ import shutil
 import ctypes
 from types import SimpleNamespace
 from matplotlib import pyplot as plt
+import os
 
 def settable_in_instantiated(variable):
     return variable.causality == 'input' \
            or variable.variability != 'constant' and variable.initial in {'approx', 'exact'}
 
 def simple_example():
-
     # define the model name and simulation parameters
     fmu_filename = 'simple_example.fmu'
+    path = os.path.abspath(__file__)
+    fmu_filename = '/'.join(path.split('/')[:-1]) + '/' + fmu_filename
     Tstart = 0.0
     Tend = 2.0
     nSteps = 100
     dt = (Tend - Tstart)/(nSteps)
     Tspan = np.linspace(Tstart+dt, Tend, 100)
+
+    # Readout the model description and load the fmu into python
     model_description = read_model_description(fmu_filename)
-    # extract the FMU
     unzipdir = extract(fmu_filename)
     fmu = fmpy.fmi2.FMU2Model(guid=model_description.guid,
                     unzipDirectory=unzipdir,
@@ -32,7 +35,7 @@ def simple_example():
                     instanceName='instance1')
     eventInfo = fmpy.fmi2.fmi2EventInfo()
 
-    # instantiate
+    # instantiate, always needs to happen at the start
     fmu.instantiate()
 
     # set the start time
@@ -41,7 +44,7 @@ def simple_example():
     # set variable start values (of "ScalarVariable / <type> / start")
     pass
 
-    # initialize
+    # initialize, needs to happen to set start values
     # determine continous and discrete states
     fmu.setupExperiment(startTime=Tstart, stopTime=Tend)
     fmu.enterInitializationMode()
@@ -51,6 +54,7 @@ def simple_example():
 
     fmu.exitInitializationMode()
 
+    # Prepare working with the fmu
     nx = model_description.numberOfContinuousStates
     nz = model_description.numberOfEventIndicators
     initialEventMode = False
@@ -76,7 +80,7 @@ def simple_example():
     pointers._pz = pointers.z.ctypes.data_as(
         ctypes.POINTER(ctypes.c_double)
     )
-    state = fmu.getContinuousStates(pointers._px, pointers.x.size)
+    status = fmu.getContinuousStates(pointers._px, pointers.x.size)
 
     # collect the value references
     vrs = {}
@@ -86,10 +90,6 @@ def simple_example():
     # get the value references for the variables we want to get/set
     vr_inputs   = vrs['x']
     vr_derivatives = vrs['der(x)']
-    # vr_outputs = vrs['y']
-
-    # retrieve solution at t=Tstart, for example, for outputs
-    # y = fmu.getReal([vr_outputs])
 
     fmu.enterContinuousTimeMode()
     status = fmu.getContinuousStates(pointers._px, pointers.x.size)
@@ -105,7 +105,7 @@ def simple_example():
 
             # enter Continuous-Time Mode
             fmu.enterContinuousTimeMode()
-            
+
             # retrieve solution at simulation (re)start
             pass
 
@@ -113,7 +113,7 @@ def simple_example():
             # the model signals a value change of states, retrieve them
             # In this simple example we don't need to check that; it changes every iteration
             status = fmu.getContinuousStates(pointers._px, pointers.x.size)
-            
+
         if time >= Tend:
             break
         # compute derivatives
@@ -126,19 +126,16 @@ def simple_example():
         pass
 
         # set states at t = time and perform one setp
-        pointers.x[0] = pointers.x[0] + dt * pointers.dx[0] 
+        pointers.x[0] = pointers.x[0] + dt * pointers.dx[0]
         x_history.append(pointers.x[0])
         status = fmu.setContinuousStates(pointers._px, pointers.x.size)
 
         # get event indicators at t = time
         status = fmu.getEventIndicators(pointers._pz, pointers.z.size)
 
+        # Process to get gradients for optimisation; not needed now but for optimisation
         df_dx = fmu.getDirectionalDerivative([vr_derivatives], [vr_inputs], [1.0])
 
-        # detect events, if any
-        # timeEvent = time >= tNext
-        # stateEvent = sign(z) <> sign(previous_z) or previous_z != 0 && z == 0
-        # previous_z = z
 
         # inform the model about an accepted step
         enterEventMode, terminateSimulation = fmu.completedIntegratorStep()
@@ -148,7 +145,7 @@ def simple_example():
 
         if terminateSimulation:
             break
-    
+
     print('ODE: dx/dt = 10*x')
     print(f'Directional Derivative (Jacobian) calculated: {df_dx}')
     fig = plt.figure()
@@ -158,9 +155,5 @@ def simple_example():
     fig.savefig('simple_example.png')
 
 
-    # J = fmu.getDirectionalDerivative(vUnknown_ref=[vr_derivatives], vKnown_ref=[vr_inputs], dvKnown=[1.0])
-
-
 if __name__ == '__main__':
-
     simple_example()

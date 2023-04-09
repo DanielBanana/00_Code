@@ -9,21 +9,25 @@ import shutil
 import ctypes
 from types import SimpleNamespace
 from matplotlib import pyplot as plt
+import os
 
 def settable_in_instantiated(variable):
     return variable.causality == 'input' \
            or variable.variability != 'constant' and variable.initial in {'approx', 'exact'}
 
 def van_der_pol():
-
     # define the model name and simulation parameters
     fmu_filename = 'Van_der_Pol.fmu'
+    path = os.path.abspath(__file__)
+    fmu_filename = '/'.join(path.split('/')[:-1]) + '/' + fmu_filename
     Tstart = 0.0
     Tend = 500.0
     nSteps = 100000
-    _lambda = 8.53
+    mu_reference = 8.53
     dt = (Tend - Tstart)/(nSteps)
     Tspan = np.linspace(Tstart+dt, Tend, nSteps)
+
+    # Readout the model description and load the fmu into python
     model_description = read_model_description(fmu_filename)
     # extract the FMU
     unzipdir = extract(fmu_filename)
@@ -33,7 +37,7 @@ def van_der_pol():
                     instanceName='instance1')
     eventInfo = fmpy.fmi2.fmi2EventInfo()
 
-    # instantiate
+    # instantiate, always needs to happen at the start
     fmu.instantiate()
 
     # set the start time
@@ -89,7 +93,8 @@ def van_der_pol():
     vr_derivatives = [vrs['der(u)'], vrs['der(v)']]
     vr_parameter = vrs['mu']
 
-    fmu.setReal([vr_parameter], [_lambda])
+    # Set the mu Value in the fmu to be the reference value determined at the start
+    fmu.setReal([vr_parameter], [mu_reference])
 
     # retrieve solution at t=Tstart, for example, for outputs
     # y = fmu.getReal([vr_outputs])
@@ -108,7 +113,7 @@ def van_der_pol():
 
             # enter Continuous-Time Mode
             fmu.enterContinuousTimeMode()
-            
+
             # retrieve solution at simulation (re)start
             pass
 
@@ -116,7 +121,7 @@ def van_der_pol():
             # the model signals a value change of states, retrieve them
             # In this simple example we don't need to check that; it changes every iteration
             status = fmu.getContinuousStates(pointers._px, pointers.x.size)
-            
+
         if time >= Tend:
             break
         # compute derivatives
@@ -141,22 +146,12 @@ def van_der_pol():
         for j in range(nx):
             df_dx[:, j] = np.array(fmu.getDirectionalDerivative(vr_derivatives, [vr_inputs[j]], [1.0]))
 
-
-        # detect events, if any
-        # timeEvent = time >= tNext
-        # stateEvent = sign(z) <> sign(previous_z) or previous_z != 0 && z == 0
-        # previous_z = z
-
         # inform the model about an accepted step
         enterEventMode, terminateSimulation = fmu.completedIntegratorStep()
 
-        # get continuous output
-        # fmu.getReal([vr_outputs])
-
         if terminateSimulation:
             break
-    
-    # print('ODE: dx/dt = 10*x')
+
     x_history = np.asarray(x_history).T
 
     print(f'Directional Derivative (Jacobian) calculated at t={Tspan[i]}: {df_dx}')
@@ -166,9 +161,6 @@ def van_der_pol():
     ax2.plot(Tspan, x_history[1])
     plt.show()
     fig.savefig('Van_der_Pol.png')
-
-
-    # J = fmu.getDirectionalDerivative(vUnknown_ref=[vr_derivatives], vKnown_ref=[vr_inputs], dvKnown=[1.0])
 
 
 if __name__ == '__main__':
