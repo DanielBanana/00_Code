@@ -99,7 +99,7 @@ if __name__ == '__main__':
     steps = 401
     t_span = np.linspace(t0, t1, steps)
     z0 = np.array([1.0, 0.0])
-    learning_rate = 0.0001
+    learning_rate = 0.000015
 
 
     #NN Parameters
@@ -127,7 +127,7 @@ if __name__ == '__main__':
     ax1.legend()
     ax1.grid()
     ax1.set_title('Start')
-    
+
 
 
     losses = []
@@ -148,7 +148,7 @@ if __name__ == '__main__':
     ax2.legend()
     ax2.grid()
     ax2.set_title('Finish')
-    
+
     ax3.plot(losses, label='Learning loss')
     ax3.legend()
     ax3.grid()
