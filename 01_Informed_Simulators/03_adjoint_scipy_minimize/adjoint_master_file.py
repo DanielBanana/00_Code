@@ -26,7 +26,7 @@ Naming Conventions:
 
 
 def f(z, t, mu):
-    '''Calculates the right hand side of the original ODE. In this case the 
+    '''Calculates the right hand side of the original ODE. In this case the
     Van der Pol Oscilator'''
     x = z[1]
     v = -1.0*z[0] + float(mu*(1-z[0]**2)*z[1])
@@ -49,7 +49,7 @@ def df_dmu(z):
 
 def g(z, z_ref):
     '''Calculates the inner part of the loss function.
-    
+
     This function can either take individual floats for z
     and z_ref or whole numpy arrays'''
     return 0.5 * (z_ref - z)**2
@@ -85,7 +85,7 @@ def adj_euler(a0, z, z_ref, t, mu):
     return a
 
 def function_wrapper(mu, args):
-    '''This is a function wrapper for the optimisation function. It returns the 
+    '''This is a function wrapper for the optimisation function. It returns the
     loss and the jacobian'''
 
     t = args[0]
@@ -115,9 +115,9 @@ def function_wrapper(mu, args):
 
 # Define Problem
 mu_ref = 8.53
-mu_init = 1.0
+mu_init = 4.0
 z0 = np.array([1.0, 0.0])
-t = np.linspace(0.0, 10.0, 801)
+t = np.linspace(0.0, 15.0, 801)
 
 # Get Reference Solution
 z_ref = f_euler(z0, t, mu_ref)
