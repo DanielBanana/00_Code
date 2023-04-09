@@ -60,7 +60,7 @@ def df_dphi(z, ode_parameters):
 
 def g(z, z_ref):
     '''Calculates the inner part of the loss function.
-    
+
     This function can either take individual floats for z
     and z_ref or whole numpy arrays'''
     return np.sum(0.5 * (z_ref - z)**2, axis=1)
@@ -95,7 +95,7 @@ def adj_euler(a0, z, z_ref, t, ode_parameters):
     return a
 
 def function_wrapper(ode_parameters, args):
-    '''This is a function wrapper for the optimisation function. It returns the 
+    '''This is a function wrapper for the optimisation function. It returns the
     loss and the jacobian'''
     t = args[0]
     z0 = args[1]
@@ -118,10 +118,7 @@ def function_wrapper(ode_parameters, args):
     df_dphi_at_t = np.array(df_dphi_at_t)
     loss = J(z, z_ref)
     dJ_dphi = 0
-    # for i in range(t.shape[0]):
-    #     dJ_dmu += dg_dmu(z, z_ref) + a.T[:,i] @ df_dphi_at_t[i]
-    # # a = np.expand_dims(a, 1)
-    
+
     # if there is only one parameter to optimise we need to manually add dimension here
     if len(df_dphi_at_t.shape) == 2:
         df_dphi_at_t = np.expand_dims(df_dphi_at_t, 1)

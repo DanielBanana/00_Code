@@ -75,7 +75,7 @@ def hybrid_ode(z, t, ode_parameters, nn_parameters):
     derivative = jnp.array([jnp.array((z[1],)),
                             jnp.array((-kappa*z[0]/mass,)) + model.apply(nn_parameters, z)]).flatten()
     return derivative
-   
+
 @jit
 def adjoint_ode(adj, z, z_ref, t, ode_parameters, nn_parameters):
     '''Calculates the right hand side of the adjoint system.'''
@@ -87,7 +87,7 @@ def adjoint_ode(adj, z, z_ref, t, ode_parameters, nn_parameters):
 
 def g(z, z_ref, ode_parameters, nn_parameters):
     '''Calculates the inner part of the loss function.
-    
+
     This function can either take individual floats for z
     and z_ref or whole numpy arrays'''
     return jnp.sum(0.5 * (z_ref - z)**2, axis = 0)
@@ -151,9 +151,10 @@ class ExplicitMLP(nn.Module):
 
 
 def function_wrapper(nn_parameters, args):
-    '''This is a function wrapper for the optimisation function. It returns the 
+    '''This is a function wrapper for the optimisation function. It returns the
     loss and the jacobian'''
-    
+
+    # Unpack the arguments
     t = args[0]
     z0 = args[1]
     ode_parameters_ref = args[2]
@@ -161,16 +162,22 @@ def function_wrapper(nn_parameters, args):
     unravel_pytree = args[4]
     epoch = args[5]
 
+    # Get the parameters out of the neural network tree structure into an array
     nn_parameters = unravel_pytree(nn_parameters)
 
+    # Calculate the reference solution (could do this out of the the function wrapper)
     z_ref = f_euler(z0, t, ode_parameters_ref)
+    # calculate the prediction of the hybrid model and calculate the loss w.r.t. the reference
     z = hybrid_euler(z0, t, ode_parameters, nn_parameters)
     loss = J(z, z_ref, ode_parameters, nn_parameters)
 
+    # adjoint always has the initial condition of all 0s.
     a0 = np.array([0, 0])
+    # Calculate the adjoint solution to the problem
     adjoint = adj_euler(a0, np.flip(z, axis=0), np.flip(z_ref, axis=0), np.flip(t), ode_parameters, nn_parameters)
     adjoint = np.flip(adjoint, axis=0)
 
+    # Calculate the gradient of the hybrid ode with respect to the nn_parameters
     df_dtheta_at_t = vectorized_df_dtheta_function(z, t, ode_parameters, nn_parameters)
 
     # For loop probably not the fastest; Pytree probably better
@@ -178,26 +185,12 @@ def function_wrapper(nn_parameters, args):
     df_dtheta_at_t = unfreeze(df_dtheta_at_t)
 
     for layer in df_dtheta_at_t['params']:
+        # Sum the matmul result over the entire time_span to get the final gradients
         df_dtheta_at_t['params'][layer]['bias'] = np.einsum("iN,iNj->j", adjoint, df_dtheta_at_t['params'][layer]['bias'])
         df_dtheta_at_t['params'][layer]['kernel'] = np.einsum("iN,iNjk->jk", adjoint, df_dtheta_at_t['params'][layer]['kernel'])
 
-        # Integrate the matmul result over the entire time_span to get the final gradients
-        # We save the results in the old jacobian since it already has the right dictionary structure
-        # del_f__del_theta__at_t['params'][layer]['bias'] = integrate.trapezoid(adjoint_matmul_jacobian_bias, t_span, axis=0) 
-        # del_f__del_theta__at_t['params'][layer]['kernel'] = integrate.trapezoid(adjoint_matmul_jacobian_kernel, t_span, axis=0) 
-
     df_dtheta = df_dtheta_at_t
-    # if there is only one parameter to optimise we need to manually add dimension here
-    # if len(df_dtheta_at_t.shape) == 2:
-    #     df_dtheta_at_t = jnp.expand_dims(df_dtheta_at_t, 2)
-    #     df_dtheta = float(np.einsum("Ni,Nij->j", adjoint, df_dtheta_at_t))
-    # else:
-    #     df_dtheta = jnp.einsum("Ni,Nij->j", adjoint, df_dtheta_at_t)
 
-    # # This evaluates only to zeroes, but for completeness sake
-    # dg_dtheta_at_t = vectorized_dg_dtheta_function(z, z_ref, ode_parameters, nn_parameters)
-    # dg_dtheta = jnp.einsum("Ni->i", dg_dtheta_at_t)
-    
     dJ_dtheta = df_dtheta
 
     flat_dJ_dtheta, _ = flatten_util.ravel_pytree(dJ_dtheta)
@@ -223,10 +216,11 @@ nn_parameters = model.init(key2, np.zeros((1, 2)))
 flat_nn_parameters, unravel_pytree = flatten_util.ravel_pytree(nn_parameters)
 epoch = 0
 
+# Put all arguments the optimization needs into one array for the minimize function
 args = [t, z0, ode_parameters_ref, ode_parameters, unravel_pytree, epoch]
 
-# Sometimes either boundaries have to be defined or the numer of steps has to be increased.
-method = 'SLSQP'
+# Possible methods include: BFGS, SLSQP, L-BFGS-B, CG
+method = 'BFGS'
 res = minimize(function_wrapper, flat_nn_parameters, method=method, jac=True, args=args, options={'maxiter': 1000})
 
 flat_nn_parameters = res['x']
