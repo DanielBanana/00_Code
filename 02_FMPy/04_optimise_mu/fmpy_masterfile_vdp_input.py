@@ -11,7 +11,7 @@ from types import SimpleNamespace
 import jax
 from jax import jit, numpy as jnp
 
-# For optimisation 
+# For optimisation
 from scipy.optimize import minimize
 
 # General
@@ -20,23 +20,18 @@ import shutil
 from matplotlib import pyplot as plt
 import os
 import sys
+
 # To use the plot_results file we need to add the uppermost folder to the PYTHONPATH
 # Only Works if file gets called from 00_Code
 sys.path.insert(0, os.getcwd())
 from plot_results import plot_results, get_plot_path
-
-
 from jax.config import config
 config.update("jax_debug_nans", False)
 config.update("jax_enable_x64", True)
 
-
 # def settable_in_instantiated(variable):
 #     return variable.causality == 'input' \
 #            or variable.variability != 'constant' and variable.initial in {'approx', 'exact'}
-
-# def damping_function(x, v, mu):
-#     return mu * (1 - x*x)*v
 
 def prepare_fmu(fmu_filename, Tstart, Tend):
     model_description = read_model_description(fmu_filename)
@@ -163,7 +158,7 @@ def df_dphi_function(fmu, vr_derivatives, vr_input):
 
 def g(z, z_ref, ode_parameters):
     '''Calculates the inner part of the loss function.
-    
+
     This function can either take individual floats for z
     and z_ref or whole numpy arrays'''
     return jnp.sum(0.5 * (z_ref - z)**2, axis = 0)
@@ -224,7 +219,7 @@ dg_dphi_function = lambda z, z_ref, phi: jnp.array(jax.grad(g, argnums=2)(z, z_r
 vectorized_dg_dphi_function = jit(jax.vmap(dg_dphi_function, in_axes=(0, 0, None)))
 
 def optimisation_wrapper(optimisation_parameters, args):
-    '''This is a function wrapper for the optimisation function. It returns the 
+    '''This is a function wrapper for the optimisation function. It returns the
     loss and the jacobian'''
     print(f'mu: {optimisation_parameters}')
     t = args[0]
@@ -255,9 +250,9 @@ def optimisation_wrapper(optimisation_parameters, args):
     # This evaluates only to zeroes, but for completeness sake
     dg_dphi_at_t = vectorized_dg_dphi_function(z, z_ref, optimisation_parameters)
     dg_dphi = jnp.einsum("Ni->i", dg_dphi_at_t)
-    
+
     dJ_dphi = dg_dphi + df_dphi
-    
+
     reset_fmu(fmu, model_description, Tstart, Tend)
 
     # print(f'Loss: {loss}; Mu: {optimisation_parameters}; gradient: {dJ_dphi}')
@@ -276,17 +271,19 @@ if __name__ == '__main__':
     optimisation_parameters_ref = np.asarray([5.0])
     optimisation_parameters = np.asarray([1.0])
 
-    directories = '02_FMPy/04_optimise_mu'
-    
     fmu_filename = 'Van_der_Pol_input.fmu'
 
-    fmu_filename = os.path.join(directories, fmu_filename)
+    path = os.path.abspath(__file__)
+    fmu_filename = '/'.join(path.split('/')[:-1]) + '/' + fmu_filename
 
+    # Readout the model description and load the fmu into python
     fmu, model_description, pointers, vr_states, vr_derivatives, vr_input = prepare_fmu(fmu_filename,  Tstart, Tend)
     number_of_states = model_description.numberOfContinuousStates
 
+    # Set the reference value for mu inside the FMU
     fmu.setReal(vr_input, [optimisation_parameters_ref[0]])
 
+    # Calculate the reference solution via the fmu and the reference mu value
     z_ref, _, __ = f_euler(z0, t, fmu, pointers, number_of_states, vr_derivatives, vr_states, vr_input)
 
     fig = plt.figure()
@@ -295,18 +292,22 @@ if __name__ == '__main__':
     ax1.plot(t, z_ref[:,1])
     ax1.set_title('Reference')
 
-
+    # Pack all values needed for the opimisation into one array to give
+    # to the minimize function
     args = [t, z0, z_ref, fmu, pointers, number_of_states, vr_derivatives, vr_states, vr_input]
 
+    # Reset and reinitialize the fmu for the next run after the reference run
     fmu, pointers = reset_fmu(fmu, model_description, Tstart, Tend)
-    
-    fmu.getReal(vr_input)
 
+    # Optimise the mu value via scipy
     # Optimisers CG, BFGS, Newton-CG, L-BFGS-B, TNC, SLSQP, dogleg, trust-ncg, trust-krylov, trust-exact and trust-constr
     res = minimize(optimisation_wrapper, optimisation_parameters, method='BFGS', jac=True, args=args)
-    print(res)  
+    print(res)
+
+    # The values we optimized for are inside the result variable
     optimisation_parameters = res.x
 
+    # Reset the FMU again for a final run for plotting purposes
     reset_fmu(fmu, model_description, Tstart, Tend)
     fmu.setReal(vr_input, [optimisation_parameters[0]])
     z, _, __ = f_euler(z0, t, fmu, pointers, number_of_states, vr_derivatives, vr_states, vr_input)
