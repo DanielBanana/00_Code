@@ -46,7 +46,7 @@ def adjoint_model(s, t, args, z_prd, z_ref, t_index):
     z_at_current_t_ref = z_ref[:,time_index]
     adjoint_variable = s
 
-    del_f__del_z = jnp.array([[0, 1], 
+    del_f__del_z = jnp.array([[0, 1],
                              [-kappa/m + (2*mu*z[0]*z[1]), (-mu*(1-z[0]**2)/m)]])
 
     del_g__del_z = (z - z_at_current_t_ref)
@@ -72,14 +72,14 @@ def J(z_at_t, z_at_t_ref, t_span, mu):
 
 
 if __name__ == '__main__':
-    theta = [[3, 8.53, 1.0],]
-    theta_prd = [[3, 1.0, 1.0],]
+    theta = [[3, 5, 1.0],]
+    theta_prd = [[3, 4.0, 1.0],]
     start_time = 0.0
     end_time = 10.0
     steps = 401
     t_span = np.linspace(start_time, end_time, steps)
     initial_condition = np.array([1.0, 0.0])
-    learning_rate_initial = 0.01
+    learning_rate_initial = 0.001
     epochs = 5000
     integration_method = euler
 
@@ -87,7 +87,7 @@ if __name__ == '__main__':
     m = theta_prd[0][2]
     z_ref = integration_method(vdp, initial_condition, start_time, end_time, t_span, theta)
     z_prd = integration_method(vdp, initial_condition, start_time, end_time, t_span, theta_prd)
-    
+
     fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(18, 6))
     ax1.plot(t_span, z_ref[0], label='Reference Position')
     ax1.plot(t_span, z_ref[1], label='Reference Velocity')
@@ -144,7 +144,7 @@ if __name__ == '__main__':
             ax6.plot(t_span, z_prd[1], label = 'Prediction, v')
             ax6.legend()
             ax6.grid()
-            
+
             ax7.plot(losses)
             ax7.grid()
             ax7.set_title('Losses')
@@ -178,4 +178,3 @@ if __name__ == '__main__':
     ax2.legend()
     ax2.grid()
     fig2.savefig(f'adjoint_mu_({theta[0][1]})_hand_heun_{steps}_steps_extra.png')
-    
