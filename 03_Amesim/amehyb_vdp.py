@@ -56,7 +56,7 @@ class HybridModel(nn.Module):
         Args:
             ode_model (FmuMEModule): The ODE model in form of an ModelExchange FMU
             augment_model (nn.Module): The extension to the ODE model, which augments the state given
-                through the ODE. Usually some sort of ML model like a NN. This augmentation is 
+                through the ODE. Usually some sort of ML model like a NN. This augmentation is
                 currently handled as an input to the FMU like a control in a control problem.
             dt (float): The time step for the ODE solver
             solver (OdeSolverType, optional): Which solver to use. Defaults to OdeSolverType.euler.
@@ -98,14 +98,14 @@ class HybridModel(nn.Module):
             self.ode_model._ru,
             self.ode_model._ry,
         )
-        
+
         nr_batches = U.shape[0]
         nr_steps = U.shape[1]
 
         X = torch.empty(nr_batches, nr_steps, len(self.ode_model._rx))
         Y = torch.empty(nr_batches, nr_steps, len(self.ode_model._ry))
-        
-        # custom_parameters contains all parameters for the FMU, which we want to 
+
+        # custom_parameters contains all parameters for the FMU, which we want to
         # control from the outside. We collect them all now.
         # First add the physics_parameters.
         custom_parameters = OrderedDict(
@@ -118,24 +118,37 @@ class HybridModel(nn.Module):
         # Now we add the parameters from the augment_model; e.g. the mu parameter for VdP
         for k, v in augment_parameters.items():
             custom_parameters[k] = v
-        
         assert all([len(x_) == nr_batches for x_ in custom_parameters.values()])
         custom_parameters_valuerefs = [self.ode_model._vrs[x_] for x_ in custom_parameters.keys()]
 
+        # Iterate over all batches in the reference
         for batch_iterator in range(nr_batches):
+            # Choose the parameter values for the current batch
             custom_parameters_values = [x_[batch_iterator] for x_ in custom_parameters.values()]
-
+            # The fmu_initialize function instantiates the FMU, sets up the Experiment and
+            # initialises the FMU with starting values. Everything that needs to be done
+            # to use the FMU.
             self.ode_model.fmu_initialize(custom_parameters_valuerefs, custom_parameters_values)
+            # x consists of all parameters of the FMU needed to progress the FMU
             x = self.ode_model.state
+            # y contains the parameters needed to evaluate the augment model, i.e.
+            # the model which extends/augments the model inside the FMU
             y = self.ode_model.output
+            # Iterate over the time steps
             for step_iterator, _ in enumerate(U[batch_iterator]):
                 if self.solver == OdeSolverType.euler:
                     # Euler
+                    # Calculate the contribution of the augment model from the FMU output
                     u = self.augment_model(y[[0]])
-                    Y[batch_iterator, step_iterator, :] = y
+                    # Track the output and state
                     X[batch_iterator, step_iterator, :] = x
+                    Y[batch_iterator, step_iterator, :] = y
+                    # Progress the time for the FMU model in python
                     self.ode_model.tnow += dt
+                    # Evaluate the FMU model by handing over the augment contribution and
+                    # the state
                     dx, y = self.ode_model(u, x)
+                    # Progress the state in Python
                     x = x + dt * dx
                 else:
                     # RK4. Call Function.forward only once, as backward will be called
@@ -159,7 +172,7 @@ class HybridModel(nn.Module):
 
 class VdP(nn.Module):
     """Manages the augment model for the Reference solution. This means it
-    contains the real term for the Van der Pol Oscillator which is missing 
+    contains the real term for the Van der Pol Oscillator which is missing
     in the FMU model
 
     Args:
@@ -248,9 +261,9 @@ def main(
     modelname = "vdp_mec"
     fname_fmu = f"03_Amesim/FMUs/{modelname}.fmu.me"
 
+    # Prepare the FMU
     unzipdir = fmpy.extract(fname_fmu)
     model_description = fmpy.read_model_description(fname_fmu)
-
     fmu = fmpy.fmi2.FMU2Model(
         guid=model_description.guid,
         unzipDirectory=unzipdir,
@@ -258,9 +271,11 @@ def main(
         instanceName=pathlib.Path(fname_fmu).with_suffix("").name,
     )
 
+    # Encapsulate the FMU model into a python class which is a subclass of nn.Module
     ode_model = FmuMEModule(fmu, model_description, verbose=False, logging=False)
     ode_model.eval()
 
+    # Set the integration parameters
     tend = 15.0
     dt = timestep
     t = np.arange(tend / dt + 1, dtype=np.float32) * dt
@@ -270,6 +285,8 @@ def main(
     # x1_values = ((torch.arange(3.)/2)**2*2).tolist()
     # x1_values = ((torch.arange(4.)/3)**2*2)[1:].tolist()  # don't start at 0; will not move
     # x1_values = torch.tensor([1.5, 2.0, 2.2])
+
+    # Allows setting of custom parameters
     x1_values = torch.tensor([2.0])
     U = torch.zeros((len(x1_values), t.size, len(ode_model._ru)))
 
@@ -292,7 +309,8 @@ def main(
         model = HybridModel(ode_model, augment_model, dt, odesolver)
 
         with torch.no_grad():
-            Y, X = model(U, augment_parameters=OrderedDict(zip(["mu"], [x1_values])))
+            # Y, X = model(U, augment_parameters=OrderedDict(zip(["mu"], [x1_values])))
+            Y, X = model(U)
         Yref = Y.detach()
         Xref = X.detach()
 
@@ -300,17 +318,19 @@ def main(
     if case == "c_fcn_d":
         # define a NN that is going to identify the damper rate
         augment_model = nn.Sequential(
-            nn.Linear(1, 3),
-            # nn.Linear(1, 10),
-            nn.Linear(3, 6),
+            nn.Linear(1, 10),
             nn.Tanh(),
-            nn.Linear(6, 1)
+            # nn.Linear(1, 10),
+            nn.Linear(10, 10),
+            nn.Tanh(),
+            nn.Linear(10, 1)
         )
     elif case == "mu":
+        # Not tested by Pommer
         augment_model = VdP()
         augment_model.mu.data[0] = torch.tensor(5.0)
     elif case == "constant":
-
+        # Not tested by Pommer
         class Constant(nn.Module):
             def __init__(self) -> None:
                 super().__init__()
@@ -321,24 +341,34 @@ def main(
 
         augment_model = Constant()
 
+    # Define the model as the ode_model inside the FMU and the augment_model inform of
+    # a NN or the likes.
     model = HybridModel(ode_model, augment_model, dt, odesolver)
 
+    # Pack the Data from which to train the NN.
     dataset = RefDataset(t, U, Yref, Xref, OrderedDict(mu=x1_values))
     dataloader = DataLoader(dataset, len(x1_values))
 
+    # Choose a Loss
     # loss_fcn = nn.L1Loss()
     # loss_fcn = nn.SmoothL1Loss()
     loss_fcn = nn.MSELoss()
+
+    # Choose an optimizer
     # optimizer = optim.Adam(model.parameters(), lr=learningrate)
     optimizer = optim_contrib.AdaBelief(model.parameters(), lr=learningrate)
     # optimizer = optim.RAdam(model.parameters(), lr=learningrate)
     # optimizer = optim.LBFGS(model.parameters(), lr=learningrate)
+
+    # Set the model to training mode
     model.train()
 
     # initial guess when estimating mu
     if case == "mu":
         model.augment_model.mu.data[0] = torch.tensor(3.0)
 
+    # Load the NN parameters from a previous run LOAD_STATEDICT_FILENAME defined at
+    # beginning of file.
     if LOAD_STATEDICT:
         sd = torch.load(LOAD_STATEDICT_FILENAME)
         # optimizer.load_state_dict(sd.optimizer)
@@ -346,17 +376,22 @@ def main(
         # for pg in optimizer.param_groups:
         #     pg["lr"] = learningrate
 
+    # Create a directory to save the runs in
     (pathlib.Path() / "runs" / modelname / case).mkdir(parents=True, exist_ok=True)
     run_nr = next_run_nr(f"runs/{modelname}/{case}")
 
+    # Create SummaryWriter object to store values important values during a training run
+    # like the loss
     writer = SummaryWriter(
         f"runs/{modelname}/{case}/run_{run_nr:03d}", flush_secs=120, max_queue=20
     )
 
+    # For Reference
     writer.add_text(
         "optimizer", " | ".join([x_.strip() for x_ in repr(optimizer).split("\n")])
     )
 
+    # This function will be called for each time step of an epoch
     def training_loop(dataloader, model, loss_fcn, optimizer):
         # not using the dataloader for now; all batches at once
         if not state_in_loss:
@@ -428,6 +463,16 @@ def main(
 
     writer.close()
 
+    dataloader.dataset.Y
+    Ypred, _ = model(dataloader.dataset.U, dataloader.dataset.custom_parameters)
+    fig = plt.figure()
+    ax = fig.subplots()
+    ax.plot(Xref[0,:,0], label='X0')
+    ax.plot(Xref[0,:,1], label='X1')
+    ax.plot(Yref[0,:,0], label='Y0')
+    ax.plot(Ypred.detach()[0,:,0], label='Pred')
+    ax.legend()
+    fig.savefig('test.png')
     sd = SimpleNamespace(model=model.state_dict(), optimizer=optimizer.state_dict())
     torch.save(sd, f"runs/{modelname}/{case}/sd-run{run_nr:03d}-latest.pt")
 
