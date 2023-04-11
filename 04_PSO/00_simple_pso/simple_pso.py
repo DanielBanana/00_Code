@@ -5,7 +5,7 @@ from matplotlib.animation import FuncAnimation
 def f(x,y):
     "Objective function"
     return (x-3.14)**2 + (y-2.72)**2 + np.sin(3*x+1.41) + np.sin(4*y-1.73)
-    
+
 # Compute and plot the function in 3D within [0,5]x[0,5]
 x, y = np.array(np.meshgrid(np.linspace(0,5,100), np.linspace(0,5,100)))
 z = f(x, y)
@@ -32,9 +32,9 @@ V = np.random.randn(2, n_particles) * 0.1
 
 # Initialize data
 pbest = X
-pbest_objective = f(X[0], X[1])
+pbest_obj = f(X[0], X[1])
 gbest = pbest[:, pbest_obj.argmin()]
-gbest_objective = pbest_obj.min()
+gbest_obj = pbest_obj.min()
 
 def update():
     "Function to do one iteration of particle swarm optimization"
