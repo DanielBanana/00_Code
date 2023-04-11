@@ -18,17 +18,19 @@ def f(x,y):
 # We start with 2d example
 
 dimensions = 2
-n_particles = 25
-beta_0 = 3
+root_particles = 10
+n_particles = root_particles**2
+n_steps = 1000
+beta_0 = 10
 learning_rate_0 = 1.0 # gamma
 noise_rate_0 = 0.4 # sigma
 drift_rate = 0.2 # lambda
 stopping_criterion = 1e-8
 particle_indices = list(range(0, n_particles))
 X = np.random.rand(n_particles, dimensions) * 5
-X = np.array(np.meshgrid(np.linspace(0,5,5), np.linspace(0,5,5))).reshape(2,25).T
+# X = np.array(np.meshgrid(np.linspace(0,root_particles), np.linspace(0,5,5))).reshape(2,25).T
 
-n_steps = 100
+
 
 # Compute and plot the function in 3D within [0,5]x[0,5]
 x, y = np.array(np.meshgrid(np.linspace(0,5,100), np.linspace(0,5,100)))
