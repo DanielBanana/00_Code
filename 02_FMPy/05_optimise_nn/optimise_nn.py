@@ -28,10 +28,12 @@ from torch.autograd.function import once_differentiable
 import os
 from torch.optim import Optimizer
 
+from torchdiffeq import odeint_adjoint
+
 class FMUModule(nn.Module):
     fmu: FMU2
 
-    def __init__(self, fmu, model_description):
+    def __init__(self, fmu, model_description, Tstart=0.0, Tend=1.0):
         super().__init__()
         self.fmu = fmu
         self.model_description = model_description
@@ -39,8 +41,8 @@ class FMUModule(nn.Module):
         self.tnow = 0.0
 
         # Will be set in initialize_fmu()
-        self.Tstart = None
-        self.Tend = None
+        self.Tstart = Tstart
+        self.Tend = Tend
 
         self._value_references = OrderedDict()
         self._input_value_references = OrderedDict()
@@ -104,6 +106,8 @@ class FMUModule(nn.Module):
         if value_references:
             self.fmu.setReal(value_references, values)
         self.fmu.enterInitializationMode()
+        # set the input start values at time = Tstart
+        pass
         self.fmu.exitInitializationMode()
 
         self.initialEventMode = False
@@ -112,7 +116,6 @@ class FMUModule(nn.Module):
         self.stateEvent = False
         self.previous_event_indicator = np.zeros(self.n_event_indicators)
         self.fmu.enterContinuousTimeMode()
-        self.initialized = True
 
         # pointers to exchange state and derivative vectors with FMU
         self.pointers = SimpleNamespace(
@@ -126,43 +129,24 @@ class FMUModule(nn.Module):
             ctypes.POINTER(ctypes.c_double)
         )
 
-        self.Tstart = Tstart
-        self.Tend = Tend
+        self.initialized = True
 
-    def reset_fmu(self, Tstart, Tend, value_references=None, values=None):
-        """Reset the FMU such that a new run can be started. New start and end times
-        can be provided
-
-        Parameters
-        ----------
-        Tstart : float
-            Time from which to start the simulation
-        Tend : _type_
-            Time at which the simulation should be stopped
-
-        Returns
-        -------
-        _type_
-            _description_
-
-        Raises
-        ------
-        RuntimeError
-            _description_
-        """
-
+    def reset_fmu(self):
         self.fmu.reset()
-        self.initialize_fmu(Tstart, Tend, value_references, values)
+        self.initialized = False
 
 
 
 # Core of the combination of FMU and NN
 # This is a special type of function which evaluates the FMU + augment model and returns
 # the output and the gradient. For that it needs a forward and backward implementation
+# This is the equivalent to the function f in the file fmpy_masterfile_vdp_input.py
+# located at 02_FMPy/04_optimise_mu
 class FMUFunction(Function):
     @staticmethod
     def forward(ctx, u, x, *meta):
-        fmu, tnow, pointers, input_reference, output_reference, derivative_references, state_references, training = meta
+        (fmu, tnow, pointers, input_reference, output_reference, derivative_references,
+            state_references, training) = meta
 
         dx, y = evaluate_FMU(u, x, fmu, tnow, pointers, input_reference, output_reference)
 
@@ -171,16 +155,18 @@ class FMUFunction(Function):
             J_dxy_x = torch.zeros(len(derivative_references) + len(output_reference), len(state_references))
             J_dxy_u = torch.zeros(len(derivative_references) + len(output_reference), len(input_reference))
 
+            # Gradients of the function w.r.t. the ODE parameters (like position, velocity,...)
             for k in range(len(state_references)):
                 J_dxy_x[:, k] = torch.tensor(
                     fmu.getDirectionalDerivative(derivative_references + output_reference, [state_references[k]], [1.0])
                 )
-
+            # Gradients w.r.t. the control/input parameters like the output of a NN
             for k in range(len(input_reference)):
                 J_dxy_u[:, k] = torch.tensor(
                     fmu.getDirectionalDerivative(derivative_references + output_reference, [input_reference[k]], [1.0])
                 )
 
+            # These are for the gradients of the
             ctx.save_for_backward(J_dxy_x, J_dxy_u)
 
         return dx, y
@@ -256,13 +242,13 @@ class HybridModel(nn.Module):
         X = torch.empty(n_batches, n_steps, len(self.fmu_module._state_reference_numbers))
         Y = torch.empty(n_batches, n_steps, len(self.fmu_module._output_reference_numbers))
 
-                # custom_parameters contains all parameters for the FMU, which we want to
+        # custom_parameters contains all parameters for the FMU, which we want to
         # control from the outside. We collect them all now.
         # First add the physics_parameters.
         custom_parameters = OrderedDict(
             [
                 (key, [value for _ in range(n_batches)])
-                for key, value in self.physics_parameters.__dict__.items()
+                for key, value in self.fmu_module.physics_parameters.__dict__.items()
             ]
         )
 
@@ -289,7 +275,6 @@ class HybridModel(nn.Module):
                     x = x + self.dt*dx
 
             # terminate_fmu(self.fmu_module.fmu)
-
         return Y, X
 
 
@@ -328,7 +313,8 @@ class AdjointOptimizer(Optimizer):
     for Neural Networks"""
 
     def __init__(self, params):
-        super(AdjointOptimizer, self).__init__(params)
+        defaults = dict()
+        super().__init__(params, defaults)
 
     def _init_group(self, group, params_with_grad, grads):
         for p in group['params']:
@@ -373,7 +359,7 @@ class AdjointOptimizer(Optimizer):
 
         pass
 
-#
+
 def instantiate_fmu(fmu_filename, Tstart, Tend):
     """Needs to be called before a FMUModule object can be created
 
@@ -401,8 +387,6 @@ def instantiate_fmu(fmu_filename, Tstart, Tend):
     # instantiate
     fmu.instantiate()
     return fmu, model_description
-
-
 
 def terminate_fmu(fmu):
         fmu.terminate()
@@ -440,7 +424,7 @@ def simulate_custom_nn_input():
     solver = 'euler'
 
     fmu, model_description = instantiate_fmu(fmu_filename, Tstart, Tend)
-    fmu_model = FMUModule(fmu, model_description)
+    fmu_model = FMUModule(fmu, model_description, Tstart, Tend)
     fmu_model.eval()
 
     augment_model = VdP()
@@ -459,6 +443,8 @@ def simulate_custom_nn_input():
     Yref = Y.detach()
     Xref = X.detach()
 
+    model.fmu_module.reset_fmu()
+
     augment_model = nn.Sequential(
         nn.Linear(2, 10),
         nn.Tanh(),
@@ -469,20 +455,18 @@ def simulate_custom_nn_input():
     )
 
     model = HybridModel(fmu_model, augment_model, dt, solver)
+    fmu_model.reference_solution = Xref
     loss_fcn = nn.MSELoss()
     optimizer = AdjointOptimizer(model.parameters())
 
     model.train()
-    reset_fmu(fmu_model.fmu, fmu_model.model_description, Tstart, Tend)
-    fmu_model.initialized = True
 
     Y, X = model(U)
 
     loss = loss_fcn(X, Xref)
     loss.retain_grad()
-    test = loss.backward(retain_graph=True)
+    loss.backward(retain_graph=True)
     # The gradients are in augment_model[0].weight.grad etc.
-    print(test)
     optimizer.step()
 
 
