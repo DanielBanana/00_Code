@@ -77,53 +77,53 @@ class FMUModule(nn.Module):
 
     # equivalent to function "f" in fmpy_masterfile_vdp_input
     def forward(self, input, state):
-        # if self.training:
-        #     dx, y, df_dz_at_t, df_du_at_t = FMUFunction.apply(
-        #         input,
-        #         state,
-        #         self.fmu,
-        #         self.tnow,
-        #         self.pointers,
-        #         self._input_reference_numbers,
-        #         self._output_reference_numbers,
-        #         self._derivative_reference_numbers,
-        #         self._state_reference_numbers,
-        #         self.training,
-        #     )
-        #     return dx, y, df_dz_at_t, df_du_at_t
-
-        # else:
-        #     dx, y = FMUFunction.apply(
-        #         input,
-        #         state,
-        #         self.fmu,
-        #         self.tnow,
-        #         self.pointers,
-        #         self._input_reference_numbers,
-        #         self._output_reference_numbers,
-        #         self._derivative_reference_numbers,
-        #         self._state_reference_numbers,
-        #         self.training,
-        #     )
-        #     return dx, y
-
-        dx, y = evaluate_fmu(input, state, self.fmu, self.tnow, self.pointers, self._input_reference_numbers, self._output_reference_numbers)
         if self.training:
-            df_dz = torch.zeros(len(self._derivative_reference_numbers) + len(self._output_reference_numbers), len(self._state_reference_numbers))
-            df_du = torch.zeros(len(self._derivative_reference_numbers) + len(self._output_reference_numbers), len(self._input_reference_numbers))
+            dx, y, df_dz_at_t, df_du_at_t = FMUFunction.apply(
+                input,
+                state,
+                self.fmu,
+                self.tnow,
+                self.pointers,
+                self._input_reference_numbers,
+                self._output_reference_numbers,
+                self._derivative_reference_numbers,
+                self._state_reference_numbers,
+                self.training,
+            )
+            return dx, y, df_dz_at_t, df_du_at_t
 
-            # Gradients of the function w.r.t. the ODE parameters (like position, velocity,...)
-            for k in range(len(self._state_reference_numbers)):
-                df_dz[:, k] = torch.tensor(
-                    fmu.getDirectionalDerivative(self._derivative_reference_numbers + self._output_reference_numbers, [self._state_reference_numbers[k]], [1.0])
-                )
-            # Gradients w.r.t. the control/input parameters like the output of a NN
-            for k in range(len(self._input_reference_numbers)):
-                df_du[:, k] = torch.tensor(
-                    fmu.getDirectionalDerivative(self._derivative_reference_numbers + self._output_reference_numbers, [self._input_reference_numbers[k]], [1.0])
-                )
-            return dx, y, df_dz, df_du
-        return dx, y
+        else:
+            dx, y = FMUFunction.apply(
+                input,
+                state,
+                self.fmu,
+                self.tnow,
+                self.pointers,
+                self._input_reference_numbers,
+                self._output_reference_numbers,
+                self._derivative_reference_numbers,
+                self._state_reference_numbers,
+                self.training,
+            )
+            return dx, y
+
+        # dx, y = evaluate_fmu(input, state, self.fmu, self.tnow, self.pointers, self._input_reference_numbers, self._output_reference_numbers)
+        # if self.training:
+        #     df_dz = torch.zeros(len(self._derivative_reference_numbers) + len(self._output_reference_numbers), len(self._state_reference_numbers))
+        #     df_du = torch.zeros(len(self._derivative_reference_numbers) + len(self._output_reference_numbers), len(self._input_reference_numbers))
+
+        #     # Gradients of the function w.r.t. the ODE parameters (like position, velocity,...)
+        #     for k in range(len(self._state_reference_numbers)):
+        #         df_dz[:, k] = torch.tensor(
+        #             fmu.getDirectionalDerivative(self._derivative_reference_numbers + self._output_reference_numbers, [self._state_reference_numbers[k]], [1.0])
+        #         )
+        #     # Gradients w.r.t. the control/input parameters like the output of a NN
+        #     for k in range(len(self._input_reference_numbers)):
+        #         df_du[:, k] = torch.tensor(
+        #             fmu.getDirectionalDerivative(self._derivative_reference_numbers + self._output_reference_numbers, [self._input_reference_numbers[k]], [1.0])
+        #         )
+        #     return dx, y, df_dz, df_du
+        # return dx, y
 
     def initialize_fmu(self, Tstart, Tend, value_references=None, values=None):
         self.fmu.setupExperiment(startTime=Tstart, stopTime=Tend)
@@ -195,8 +195,6 @@ class FMUFunction(Function):
 
         return dx, y
 
-    # With the adjoint method we can't calculate the gradient grad_u and grad_x
-    # step by step. We calculate the gradients by solving an adjoint problem
     @staticmethod
     @once_differentiable
     def backward(ctx, *grad_outputs):
@@ -292,7 +290,9 @@ class HybridModel(nn.Module):
         self.fmu_module.tnow += self.dt
         return self.fmu_module(u, state)
 
-    def simulate(self, control, adjoint_params, reference_solution, augment_parameters: dict = {}):
+    # def simulate(self, control, adjoint_params, reference_solution, augment_parameters: dict = {}):
+    def simulate(self, control, augment_parameters: dict = {}):
+
         # x0 = torch.cat([self.inital_pos, self.initial_aug]).reshape(-1)
         solution = odeint_adjoint(self, self.fmu_module, self.augment_module, control, self.dt, augment_parameters, {})
         return solution
