@@ -27,8 +27,9 @@ from torch.autograd import Function
 from torch.autograd.function import once_differentiable
 import os
 from torch.optim import Optimizer
-
 from torchdiffeq import odeint_adjoint
+
+
 
 class FMUModule(nn.Module):
     fmu: FMU2
@@ -174,6 +175,7 @@ class FMUFunction(Function):
     @staticmethod
     @once_differentiable
     def backward(ctx, *grad_outputs):
+        # Not sure what this is; I think we don't need it for the adjoint method
         grad_dx, grad_y = grad_outputs
 
         grad_u = grad_x = None
@@ -273,6 +275,7 @@ class HybridModel(nn.Module):
                     self.fmu_module.tnow += self.dt
                     dx, y = self.fmu_module(u, x)
                     x = x + self.dt*dx
+
 
             # terminate_fmu(self.fmu_module.fmu)
         return Y, X
@@ -392,25 +395,6 @@ def terminate_fmu(fmu):
         fmu.terminate()
         fmu.freeInstance()
 
-def optimisation_wrapper(optimisation_parameters, args):
-    print(f'mu: {optimisation_parameters}')
-    # t = args[0]
-    # z0 = args[1]
-    # z_ref = args[2]
-    # fmu = args[3]
-    # pointers = args[4]
-    # number_of_states = args[5]
-    # vr_derivatives = args[6]
-    # vr_states = args[7]
-    # vr_input = args[8]
-    z_ref = args[2]
-    model = args[3]
-    U = args[4]
-    z, _ = model(U)
-    loss = J(z, z_ref)
-    grad = loss.backward()
-
-
 
 def simulate_custom_nn_input():
     fmu_filename = 'Van_der_Pol_damping_input.fmu'
@@ -457,7 +441,8 @@ def simulate_custom_nn_input():
     model = HybridModel(fmu_model, augment_model, dt, solver)
     fmu_model.reference_solution = Xref
     loss_fcn = nn.MSELoss()
-    optimizer = AdjointOptimizer(model.parameters())
+    # optimizer = AdjointOptimizer(model.parameters())
+    optimizer = torch.optim.Adam(model.parameters())
 
     model.train()
 
