@@ -259,7 +259,7 @@ def main(
         raise RuntimeError("unknown ode solver specified")
 
     modelname = "vdp_mec"
-    fname_fmu = f"03_Amesim/FMUs/{modelname}.fmu.me"
+    fname_fmu = f"FMUs/{modelname}.fmu.me"
 
     # Prepare the FMU
     unzipdir = fmpy.extract(fname_fmu)

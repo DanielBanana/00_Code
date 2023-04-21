@@ -147,12 +147,14 @@ def adjoint_f(adj, z, z_ref, t, optimisation_parameters, df_dz_at_t):
     d_adj = - df_dz_at_t.T @ adj - dg_dz
     return d_adj
 
+# Returns a Jacobian
 def df_dz_function(fmu, number_of_states, vr_derivatives, vr_states):
     current_df_dz = np.zeros((2,2))
     for j in range(number_of_states):
             current_df_dz[:, j] = np.array(fmu.getDirectionalDerivative(vr_derivatives, [vr_states[j]], [1.0]))
     return current_df_dz
 
+# Returns a Jacobian
 def df_dphi_function(fmu, vr_derivatives, vr_input):
     return fmu.getDirectionalDerivative(vr_derivatives, vr_input, [1.0])
 

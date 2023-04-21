@@ -29,6 +29,8 @@ import os
 from torch.optim import Optimizer
 from torchdiffeq import odeint_adjoint
 
+import autograd_hacks
+
 
 
 class FMUModule(nn.Module):
@@ -280,7 +282,6 @@ class HybridModel(nn.Module):
             # terminate_fmu(self.fmu_module.fmu)
         return Y, X
 
-
 class VdP(nn.Module):
     """Manages the augment model for the Reference solution. This means it
     contains the real term for the Van der Pol Oscillator which is missing
@@ -307,60 +308,6 @@ def g(z, z_ref, ode_parameters):
 def J(z, z_ref, optimisation_parameters):
     '''Calculates the complete loss of a trajectory w.r.t. a reference trajectory'''
     return np.sum(g(z, z_ref, optimisation_parameters))
-
-
-# For best interaction with the torch Neural Network we write the ajoint optimizer as
-# a torch optimizer
-class AdjointOptimizer(Optimizer):
-    """Implements the adjoint optimization scheme for optimizing parameters in ODEs
-    for Neural Networks"""
-
-    def __init__(self, params):
-        defaults = dict()
-        super().__init__(params, defaults)
-
-    def _init_group(self, group, params_with_grad, grads):
-        for p in group['params']:
-            if p.grad is None:
-                continue
-            params_with_grad.append(p)
-            if p.grad.is_sparse:
-                raise RuntimeError("AdjointOptimizer does not support sparse gradients")
-            grads.append(p.grad)
-
-
-    def step(self, closure=None):
-        """Performs a single optimization step
-
-        Args:
-            closure (Callable, optional): A closure that reevaluates the model
-                and returns the loss.
-        """
-
-        loss = None
-        if closure is not None:
-            with torch.enable_grad():
-                loss = closure()
-
-        for group in self.param_groups:
-            params_with_grad = []
-            grads = []
-
-            self._init_group(group, params_with_grad, grads)
-
-            self.adjointoptimizer(
-                params_with_grad,
-                grads
-            )
-
-        return loss
-
-    def adjointoptimizer(
-        params: List[torch.Tensor],
-        grads: List[torch.Tensor]
-    ):
-
-        pass
 
 
 def instantiate_fmu(fmu_filename, Tstart, Tend):
@@ -432,28 +379,29 @@ def simulate_custom_nn_input():
     augment_model = nn.Sequential(
         nn.Linear(2, 10),
         nn.Tanh(),
-        # nn.Linear(1, 10),
         nn.Linear(10, 10),
         nn.Tanh(),
         nn.Linear(10, 1)
     )
-
+    autograd_hacks.add_hooks(augment_model)
     model = HybridModel(fmu_model, augment_model, dt, solver)
     fmu_model.reference_solution = Xref
     loss_fcn = nn.MSELoss()
     # optimizer = AdjointOptimizer(model.parameters())
-    optimizer = torch.optim.Adam(model.parameters())
+    # optimizer = torch.optim.Adam(model.parameters())
 
     model.train()
+
 
     Y, X = model(U)
 
     loss = loss_fcn(X, Xref)
-    loss.retain_grad()
-    loss.backward(retain_graph=True)
+    loss.backward()
     # The gradients are in augment_model[0].weight.grad etc.
-    optimizer.step()
-
+    # optimizer.step()
+    for layer in augment_model.modules():
+        if autograd_hacks._layer_type(layer) == 'Linear':
+            layer.backprops_list = [layer.backprops_list[0]] # Here are the
 
 if __name__ == '__main__':
     simulate_custom_nn_input()
