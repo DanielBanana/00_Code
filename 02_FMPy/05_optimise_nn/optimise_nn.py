@@ -29,7 +29,7 @@ import os
 from torch.optim import Optimizer
 from torchdiffeq import odeint_adjoint
 
-import autograd_hacks
+# import autograd_hacks
 
 
 
@@ -383,7 +383,6 @@ def simulate_custom_nn_input():
         nn.Tanh(),
         nn.Linear(10, 1)
     )
-    autograd_hacks.add_hooks(augment_model)
     model = HybridModel(fmu_model, augment_model, dt, solver)
     fmu_model.reference_solution = Xref
     loss_fcn = nn.MSELoss()
@@ -392,16 +391,12 @@ def simulate_custom_nn_input():
 
     model.train()
 
-
     Y, X = model(U)
 
     loss = loss_fcn(X, Xref)
     loss.backward()
     # The gradients are in augment_model[0].weight.grad etc.
     # optimizer.step()
-    for layer in augment_model.modules():
-        if autograd_hacks._layer_type(layer) == 'Linear':
-            layer.backprops_list = [layer.backprops_list[0]] # Here are the
 
 if __name__ == '__main__':
     simulate_custom_nn_input()
