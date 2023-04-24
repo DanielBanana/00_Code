@@ -200,13 +200,13 @@ def function_wrapper(nn_parameters, args):
     args[5] = epoch
     return loss, flat_dJ_dtheta
 
-t = np.linspace(0.0, 10.0, 801)
+t = np.linspace(0.0, 10.0, 601)
 z0 = np.array([1.0, 0.0])
-ode_parameters_ref = np.asarray([3.0, 5.0, 1.0])
-ode_parameters = np.asarray([3.0, 1.0, 1.0])
+ode_parameters_ref = np.asarray([1.0, 5.0, 1.0])
+ode_parameters = np.asarray([1.0, 1.0, 1.0])
 
 
-layers = [20, 1]
+layers = [5, 1]
 #NN Parameters
 key1, key2 = random.split(random.PRNGKey(0), 2)
 # Input size is guess from input during init
