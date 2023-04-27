@@ -8,6 +8,7 @@ from flax.core import freeze, unfreeze
 from typing import Sequence
 import os
 import sys
+import time
 
 # To use the plot_results file we need to add the uppermost folder to the PYTHONPATH
 # Only Works if file gets called from 00_Code
@@ -34,26 +35,26 @@ from jax.config import config
 config.update("jax_enable_x64", True)
 
 
-@jit
-def ode_stim(z, t, ode_parameters):
-    '''Calculates the right hand side of the original ODE.'''
-    kappa = ode_parameters[0]
-    mu = ode_parameters[1]
-    mass = ode_parameters[2]
-    derivative = jnp.array([z[1],
-                           -kappa*z[0]/mass + (mu*(1-z[0]**2)*z[1])/mass + 1.2*jnp.cos(0.628*t)])
-    return derivative
+# @jit
+# def ode(z, t, ode_parameters):
+#     '''Calculates the right hand side of the original ODE.'''
+#     kappa = ode_parameters[0]
+#     mu = ode_parameters[1]
+#     mass = ode_parameters[2]
+#     derivative = jnp.array([z[1],
+#                            -kappa*z[0]/mass + (mu*(1-z[0]**2)*z[1])/mass + 1.2*jnp.cos(0.628*t)])
+#     return derivative
 
-@jit
-def hybrid_ode_stim(z, t, ode_parameters, nn_parameters):
-    '''Calculates the right hand side of the hybrid ODE, where
-    the damping term is replaced by the neural network'''
-    kappa = ode_parameters[0]
-    mu = ode_parameters[1]
-    mass = ode_parameters[2]
-    derivative = jnp.array([jnp.array((z[1],)),
-                            jnp.array((-kappa*z[0]/mass,)) + model.apply(nn_parameters, z) + jnp.array(1.2*jnp.cos(0.628*t))] ).flatten()
-    return derivative
+# @jit
+# def hybrid_ode(z, t, ode_parameters, nn_parameters):
+#     '''Calculates the right hand side of the hybrid ODE, where
+#     the damping term is replaced by the neural network'''
+#     kappa = ode_parameters[0]
+#     mu = ode_parameters[1]
+#     mass = ode_parameters[2]
+#     derivative = jnp.array([jnp.array((z[1],)),
+#                             jnp.array((-kappa*z[0]/mass,)) + model.apply(nn_parameters, z) + jnp.array(1.2*jnp.cos(0.628*t))] ).flatten()
+#     return derivative
 
 @jit
 def ode(z, t, ode_parameters):
@@ -109,9 +110,15 @@ def hybrid_euler(z0, t, ode_parameters, nn_parameters):
     '''Applies forward Euler to the hybrid ODE and returns the trajectory'''
     z = np.zeros((t.shape[0], 2))
     z[0] = z0
+    times = []
     for i in range(len(t)-1):
         dt = t[i+1] - t[i]
+        start = time.time()
         z[i+1] = z[i] + dt * hybrid_ode(z[i], t[i], ode_parameters, nn_parameters)
+        end = time.time()
+        times.append(end-start)
+    mean_time = np.asarray(times).mean()
+    # print(f'Mean calculation time for derivatives and jacobians: {mean_time}')
     return z
 
 def adj_euler(a0, z, z_ref, t, ode_parameters, nn_parameters):
@@ -157,7 +164,7 @@ def function_wrapper(nn_parameters, args):
     # Unpack the arguments
     t = args[0]
     z0 = args[1]
-    ode_parameters_ref = args[2]
+    z_ref = args[2]
     ode_parameters = args[3]
     unravel_pytree = args[4]
     epoch = args[5]
@@ -166,7 +173,6 @@ def function_wrapper(nn_parameters, args):
     nn_parameters = unravel_pytree(nn_parameters)
 
     # Calculate the reference solution (could do this out of the the function wrapper)
-    z_ref = f_euler(z0, t, ode_parameters_ref)
     # calculate the prediction of the hybrid model and calculate the loss w.r.t. the reference
     z = hybrid_euler(z0, t, ode_parameters, nn_parameters)
     loss = J(z, z_ref, ode_parameters, nn_parameters)
@@ -178,35 +184,35 @@ def function_wrapper(nn_parameters, args):
     adjoint = np.flip(adjoint, axis=0)
 
     # Calculate the gradient of the hybrid ode with respect to the nn_parameters
-    df_dtheta_at_t = vectorized_df_dtheta_function(z, t, ode_parameters, nn_parameters)
+    df_dtheta_trajectory = vectorized_df_dtheta_function(z, t, ode_parameters, nn_parameters)
 
     # For loop probably not the fastest; Pytree probably better
     # Matrix multiplication of adjoint variable with jacobian
-    df_dtheta_at_t = unfreeze(df_dtheta_at_t)
+    df_dtheta_trajectory = unfreeze(df_dtheta_trajectory)
 
-    for layer in df_dtheta_at_t['params']:
+    for layer in df_dtheta_trajectory['params']:
         # Sum the matmul result over the entire time_span to get the final gradients
-        df_dtheta_at_t['params'][layer]['bias'] = np.einsum("iN,iNj->j", adjoint, df_dtheta_at_t['params'][layer]['bias'])
-        df_dtheta_at_t['params'][layer]['kernel'] = np.einsum("iN,iNjk->jk", adjoint, df_dtheta_at_t['params'][layer]['kernel'])
+        df_dtheta_trajectory['params'][layer]['bias'] = np.einsum("iN,iNj->j", adjoint, df_dtheta_trajectory['params'][layer]['bias'])
+        df_dtheta_trajectory['params'][layer]['kernel'] = np.einsum("iN,iNjk->jk", adjoint, df_dtheta_trajectory['params'][layer]['kernel'])
 
-    df_dtheta = df_dtheta_at_t
+    df_dtheta = df_dtheta_trajectory
 
     dJ_dtheta = df_dtheta
 
     flat_dJ_dtheta, _ = flatten_util.ravel_pytree(dJ_dtheta)
 
-    print(f'Epoch: {epoch}, Loss: {loss:.5f}')
+    print(f'Epoch: {epoch}, Loss: {loss:.5f}, first gradient value: {flat_dJ_dtheta[0]}')
     epoch += 1
     args[5] = epoch
     return loss, flat_dJ_dtheta
 
-t = np.linspace(0.0, 10.0, 601)
+t = np.linspace(0.0, 10.0, 1001)
 z0 = np.array([1.0, 0.0])
 ode_parameters_ref = np.asarray([1.0, 5.0, 1.0])
 ode_parameters = np.asarray([1.0, 1.0, 1.0])
 
 
-layers = [5, 1]
+layers = [5, 5, 1]
 #NN Parameters
 key1, key2 = random.split(random.PRNGKey(0), 2)
 # Input size is guess from input during init
@@ -216,8 +222,10 @@ nn_parameters = model.init(key2, np.zeros((1, 2)))
 flat_nn_parameters, unravel_pytree = flatten_util.ravel_pytree(nn_parameters)
 epoch = 0
 
+z_ref = f_euler(z0, t, ode_parameters_ref)
+
 # Put all arguments the optimization needs into one array for the minimize function
-args = [t, z0, ode_parameters_ref, ode_parameters, unravel_pytree, epoch]
+args = [t, z0, z_ref, ode_parameters, unravel_pytree, epoch]
 
 # Possible methods include: BFGS, SLSQP, L-BFGS-B, CG
 method = 'BFGS'
@@ -228,7 +236,6 @@ nn_parameters = unravel_pytree(flat_nn_parameters)
 
 print(res)
 
-z_ref = f_euler(z0, t, ode_parameters_ref)
 z = hybrid_euler(z0, t, ode_parameters_ref, nn_parameters)
 
 fig = plt.figure()
