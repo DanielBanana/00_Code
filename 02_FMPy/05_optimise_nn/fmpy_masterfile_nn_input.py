@@ -11,7 +11,7 @@ from types import SimpleNamespace
 import jax
 from jax import random, jit, flatten_util, numpy as jnp
 from flax import linen as nn
-from flax.core import freeze, unfreeze
+from flax.core import freeze, unfreeze, FrozenDict
 from typing import Sequence
 
 # For optimisation
@@ -23,6 +23,9 @@ import shutil
 from matplotlib import pyplot as plt
 import os
 import sys
+
+from functools import partial
+import time
 
 # To use the plot_results file we need to add the uppermost folder to the PYTHONPATH
 # Only Works if file gets called from 00_Code
@@ -137,19 +140,34 @@ def reset_fmu(fmu, model_description, Tstart, Tend):
 
     return fmu, pointers
 
-def f(fmu, pointers, number_of_states, vr_derivatives, vr_states, vr_input):
+def f(fmu, pointers, vr_input):
     fmu.setReal(vr_input, [damping(pointers.x)])
     status = fmu.getDerivatives(pointers._pdx, pointers.dx.size)
-    df_dz_at_t = df_dz_function(fmu, number_of_states, vr_derivatives, vr_states)
-    df_dphi_at_t = df_dphi_function(fmu, vr_derivatives, vr_input)
-    return pointers.dx, df_dz_at_t, df_dphi_at_t
+    return pointers.dx
 
 def hybrid_f(fmu, pointers, number_of_states, vr_derivatives, vr_states, vr_input, nn_parameters):
-    fmu.setReal(vr_input, [model.apply(nn_parameters, pointers.x)])
+    start = time.time()
+    # control = jit_apply(model, nn_parameters, jnp.array(pointers.x))
+    # control = model.apply(nn_parameters, pointers.x)
+    control = jitted_model(nn_parameters, pointers.x)
+
+    cp_neural_network = time.time()
+    fmu.setReal(vr_input, [control])
+    cp_set_input = time.time()
     status = fmu.getDerivatives(pointers._pdx, pointers.dx.size)
-    df_dz_at_t = df_dz_function(fmu, number_of_states, vr_derivatives, vr_states)
-    df_dphi_at_t = hybrid_df_dphi_function(fmu, pointers, vr_derivatives, vr_input)
-    return pointers.dx, df_dz_at_t, df_dphi_at_t
+    cp_get_derivatives = time.time()
+    df_dz_at_t = dfmu_dz_function(fmu, number_of_states, vr_derivatives, vr_states)
+    cp_get_df_dz = time.time()
+    df_dinput_at_t = df_dinput_function(fmu, vr_derivatives, vr_input)
+    cp_get_df_dinput = time.time()
+
+    time_neural_network = cp_neural_network-start
+    time_set_input = cp_set_input-cp_neural_network
+    time_get_derivatives = cp_get_derivatives-cp_set_input
+    time_get_df_dz = cp_get_df_dz-cp_get_derivatives
+    time_get_df_dinput = cp_get_df_dinput-cp_get_df_dz
+    times = [time_neural_network, time_set_input, time_get_derivatives, time_get_df_dz, time_get_df_dinput]
+    return pointers.dx, df_dz_at_t, df_dinput_at_t, times
 
 @jit
 def adjoint_f(adj, z, z_ref, t, optimisation_parameters, df_dz_at_t):
@@ -159,28 +177,27 @@ def adjoint_f(adj, z, z_ref, t, optimisation_parameters, df_dz_at_t):
     return d_adj
 
 # Returns a Jacobian
-def df_dz_function(fmu, number_of_states, vr_derivatives, vr_states):
+def dfmu_dz_function(fmu, number_of_states, vr_derivatives, vr_states):
     current_df_dz = np.zeros((2,2))
     for j in range(number_of_states):
             current_df_dz[:, j] = np.array(fmu.getDirectionalDerivative(vr_derivatives, [vr_states[j]], [1.0]))
     return current_df_dz
 
 # Returns a Jacobian
-def df_dphi_function(fmu, vr_derivatives, vr_input):
+def df_dinput_function(fmu, vr_derivatives, vr_input):
     return fmu.getDirectionalDerivative(vr_derivatives, vr_input, [1.0])
 
-def hybrid_df_dphi_function(fmu, pointers, vr_derivatives, vr_input):
-    df_dinput = fmu.getDirectionalDerivative(vr_derivatives, vr_input, [1.0])
-    dinput_dphi = jax.jacobian(model.apply, argnums=0)(nn_parameters, pointers.x)
-    df_dinput = jnp.array(df_dinput).reshape(2, -1)
-    dinput_dphi = unfreeze(dinput_dphi)
-    for layer in dinput_dphi['params']:
+def hybrid_df_dtheta_function(df_dinput, z, nn_parameters):
+    dinput_dtheta = jax.jacobian(model.apply, argnums=0)(nn_parameters, z)
+    dinput_dtheta = unfreeze(dinput_dtheta)
+    for layer in dinput_dtheta['params']:
         # Matrix multiplication inform of einstein sums (only really needed for the kernel
-        # calculation, but makes the code einheitlich)
-        dinput_dphi['params'][layer]['bias'] = np.einsum("ij,jk->ik", df_dinput, dinput_dphi['params'][layer]['bias'])
-        dinput_dphi['params'][layer]['kernel'] = np.einsum("ij,jkl->ikl", df_dinput, dinput_dphi['params'][layer]['kernel'])
-    # dinput_dphi, should now be called df_dphi
-    return dinput_dphi
+        # calculation, but makes the code uniform)
+        dinput_dtheta['params'][layer]['bias'] = jnp.einsum("ij,jk->ik", df_dinput, dinput_dtheta['params'][layer]['bias'])
+        dinput_dtheta['params'][layer]['kernel'] = jnp.einsum("ij,jkl->ikl", df_dinput, dinput_dtheta['params'][layer]['kernel'])
+    # dinput_dtheta, should now be called df_dtheta
+    return dinput_dtheta
+
 
 def g(z, z_ref, nn_parameters):
     '''Calculates the inner part of the loss function.
@@ -202,30 +219,29 @@ def f_euler(z0, t, fmu, pointers, number_of_states, vr_derivatives, vr_states, v
     fmu.setReal(vr_states, z0)
     fmu.getContinuousStates(pointers._px, pointers.x.size)
 
-    df_dz_trajectory = []
-    df_dphi_trajectory = []
+    if training:
+        dfmu_dz_trajectory = []
+        dfmu_dinput_trajectory = []
+    hybrid_times = []
     for i in range(len(t)-1):
         status = fmu.setTime(t[i])
         dt = t[i+1] - t[i]
 
         if training:
-            derivatives, df_dz_at_t, df_dphi_at_t = hybrid_f(fmu, pointers, number_of_states, vr_derivatives, vr_states, vr_input, nn_parameters)
+            start = time.time()
+            derivatives, dfmu_dz_at_t, dfmu_dinput_at_t, times = hybrid_f(fmu, pointers, number_of_states, vr_derivatives, vr_states, vr_input, nn_parameters)
+            end = time.time()
+            times.append(end-start)
+            hybrid_times.append(times)
+            dfmu_dz_trajectory.append(dfmu_dz_at_t)
+            dfmu_dinput_trajectory.append(dfmu_dinput_at_t)
         else:
-            derivatives, df_dz_at_t, df_dphi_at_t = f(fmu, pointers, number_of_states, vr_derivatives, vr_states, vr_input)
+            derivatives = f(fmu, pointers, vr_input)
+
         z[i+1] = z[i] + dt * derivatives
-        df_dz_trajectory.append(df_dz_at_t)
-        # df_dphi_trajectory.append(df_dphi_at_t)
-        if training:
-            if i == 1:
-                for layer in df_dphi_trajectory['params']:
-                    df_dphi_trajectory['params'][layer]['bias'] = jnp.stack((df_dphi_trajectory['params'][layer]['bias'], df_dphi_at_t['params'][layer]['bias']))
-                    df_dphi_trajectory['params'][layer]['kernel'] = jnp.stack((df_dphi_trajectory['params'][layer]['kernel'], df_dphi_at_t['params'][layer]['kernel']))
-            elif i > 1:
-                for layer in df_dphi_trajectory['params']:
-                    df_dphi_trajectory['params'][layer]['bias'] = jnp.concatenate((df_dphi_trajectory['params'][layer]['bias'], jnp.expand_dims(df_dphi_at_t['params'][layer]['bias'], 0)))
-                    df_dphi_trajectory['params'][layer]['kernel'] = jnp.concatenate((df_dphi_trajectory['params'][layer]['kernel'], jnp.expand_dims(df_dphi_at_t['params'][layer]['kernel'], 0)))
-            else:
-                df_dphi_trajectory = df_dphi_at_t
+
+
+
 
         pointers.x += dt * pointers.dx
 
@@ -247,10 +263,28 @@ def f_euler(z0, t, fmu, pointers, number_of_states, vr_derivatives, vr_states, v
     # We get on jacobian less then we get datapoints, since we get the jacobian
     # with every derivative we calculate, and we have one datapoint already given
     # at the start
-    z = z[:-1,:]
+    if training:
+        derivatives, dfmu_dz_at_t, dfmu_dinput_at_t, times = hybrid_f(fmu, pointers, number_of_states, vr_derivatives, vr_states, vr_input, nn_parameters)
+        times.append(end-start)
+        hybrid_times.append(times)
+        dfmu_dz_trajectory.append(dfmu_dz_at_t)
+        dfmu_dinput_trajectory.append(dfmu_dinput_at_t)
 
     if training:
-        return z, np.asarray(df_dz_trajectory), df_dphi_trajectory
+        mean_times = np.asarray(hybrid_times).mean(0)
+        #time_get_derivatives, time_get_df_dinput, time_get_df_dz, time_set_input
+        print(f'Mean time to calculate the NN contribution: {mean_times[0]}')
+        print(f'Mean time to set the input (NN contribution) in the FMU: {mean_times[1]}')
+        print(f'Mean time for FMU to calculate derivatives: {mean_times[2]}')
+        print(f'Mean time to get state jacobian from FMU: {mean_times[3]}')
+        print(f'Mean time to get input jacobian from FMU: {mean_times[4]}')
+        print(f'Mean time for the whole process: {mean_times[5]}')
+
+    if training:
+        dfmu_dinput_trajectory = jnp.asarray(dfmu_dinput_trajectory)
+        while len(dfmu_dinput_trajectory.shape) <= 2:
+            dfmu_dinput_trajectory = jnp.expand_dims(dfmu_dinput_trajectory, -1)
+        return z, np.asarray(dfmu_dz_trajectory), jnp.asarray(dfmu_dinput_trajectory)
     else:
         return z
 
@@ -262,32 +296,48 @@ def adj_euler(a0, z, z_ref, t, optimisation_parameters, df_dz_trajectory):
         dt = t[i+1] - t[i]
         #(adj, z, z_ref, t, optimisation_parameters, fmu_parameters):
         a[i+1] = a[i] + dt * adjoint_f(a[i], z[i], z_ref[i], t[i], optimisation_parameters, df_dz_trajectory[i])
-    return a[:-1, :]
+    return a
 
 # The Neural Network structure class
 class ExplicitMLP(nn.Module):
-  features: Sequence[int]
+    features: Sequence[int]
 
-  def setup(self):
-    # we automatically know what to do with lists, dicts of submodules
-    self.layers = [nn.Dense(feat) for feat in self.features]
-    # for single submodules, we would just write:
-    # self.layer1 = nn.Dense(feat1)
+    def setup(self):
+        # we automatically know what to do with lists, dicts of submodules
+        self.layers = [nn.Dense(feat) for feat in self.features]
+        # for single submodules, we would just write:
+        # self.layer1 = nn.Dense(feat1)
 
-  def __call__(self, inputs):
-    x = inputs
-    for i, lyr in enumerate(self.layers):
-      x = lyr(x)
-      if i != len(self.layers) - 1:
-        x = nn.relu(x)
-    return x
+    def __call__(self, inputs):
+        x = inputs
+        for i, lyr in enumerate(self.layers):
+            x = lyr(x)
+            if i != len(self.layers) - 1:
+                x = nn.relu(x)
+        return x
 
 def damping(state):
     return 5.0 * (1-state[0]**2)*state[1]
 
-# Vectorize the  jacobian dg_dphi for all time points
-dg_dphi_function = lambda z, z_ref, phi: jnp.array(jax.grad(g, argnums=2)(z, z_ref, phi))
-vectorized_dg_dphi_function = jit(jax.vmap(dg_dphi_function, in_axes=(0, 0, None)))
+# Vectorize the jacobian dg_dtheta for all time points
+dg_dtheta_function = lambda z, z_ref, theta: jnp.array(jax.grad(g, argnums=2)(z, z_ref, theta))
+vectorized_dg_dtheta_function = jit(jax.vmap(dg_dtheta_function, in_axes=(0, 0, None)))
+
+# Vectorize the jacobian df_dtheta for all time points
+vectorized_df_dtheta_function = jax.jit(jax.vmap(hybrid_df_dtheta_function, in_axes=(0, 0, None)))
+
+# Vectorize the jacobian dinput_dz for all time points (where input means neural network)
+dinput_dz_function = lambda p, z: jnp.array(jax.jacobian(model.apply, argnums=1)(p, z))
+vectorized_dinput_dz_function = jax.jit(jax.vmap(dinput_dz_function, in_axes=(None, 0)))
+
+df_dz_function = lambda dfmu_dz, dinput_dz, dfmu_dinput: dfmu_dz + dinput_dz * dfmu_dinput
+vectorized_df_dz_function = jax.jit(jax.vmap(df_dz_function, in_axes=(0,0,0)))
+
+@jit
+def df_dz_function(dfmu_dz, dinput_dz, dfmu_dinput):
+    return jnp.array(dfmu_dz + dinput_dz * dfmu_dinput)
+
+# df_dz_function = lambda dfmu_dz, dinput_dz, dfmu_dinput: jax.jit(jnp.array(dfmu_dz + dinput_dz * dfmu_dinput))
 
 def optimisation_wrapper(nn_parameters, args):
     '''This is a function wrapper for the optimisation function. It returns the
@@ -303,70 +353,84 @@ def optimisation_wrapper(nn_parameters, args):
     vr_states = args[7]
     vr_input = args[8]
     unravel_pytree = args[9]
+    epoch = args[10]
 
     # fmu.setReal(vr_input, [optimisation_parameters[0]])
     nn_parameters = unravel_pytree(nn_parameters)
 
-    z, df_dz_trajectory, df_dphi_trajectory = f_euler(z0, t, fmu, pointers, number_of_states, vr_derivatives, vr_states, vr_input, training=True, nn_parameters=nn_parameters)
+    z, dfmu_dz_trajectory, dfmu_dinput_trajectory = f_euler(z0, t, fmu, pointers, number_of_states, vr_derivatives, vr_states, vr_input, training=True, nn_parameters=nn_parameters)
     loss = J(z, z_ref, nn_parameters)
+
+    # Calculating the full derivative df_dz:
+    # partial_fmu_partial_z + dinput_dz*partial_fmu_aprtial_u
+    start = time.time()
+    dinput_dz_trajectory = vectorized_dinput_dz_function(nn_parameters, z)
+    cp_di_dz = time.time()
+    df_dz_trajectory = vectorized_df_dz_function(dfmu_dz_trajectory, dinput_dz_trajectory, dfmu_dinput_trajectory)
+    cp_df_dz = time.time()
 
     a0 = np.array([0, 0])
     adjoint = adj_euler(a0, np.flip(z, axis=0), np.flip(z_ref, axis=0), np.flip(t), nn_parameters, np.flip(df_dz_trajectory, axis=0))
     adjoint = np.flip(adjoint, axis=0)
 
-    # if len(df_dphi_trajectory.shape) == 2:
-    #     df_dphi_trajectory = jnp.expand_dims(df_dphi_trajectory, 2)
-    #     df_dphi = float(np.einsum("Ni,Nij->j", adjoint[1:], df_dphi_trajectory))
+    # if len(df_dtheta_trajectory.shape) == 2:
+    #     df_dtheta_trajectory = jnp.expand_dims(df_dtheta_trajectory, 2)
+    #     df_dtheta = float(np.einsum("Ni,Nij->j", adjoint[1:], df_dtheta_trajectory))
     # else:
-    #     df_dphi = jnp.einsum("Ni,Nij->j", adjoint[1:], df_dphi_trajectory)
+    #     df_dtheta = jnp.einsum("Ni,Nij->j", adjoint[1:], df_dtheta_trajectory)
 
-    df_dphi_trajectory = unfreeze(df_dphi_trajectory)
 
-    for layer in df_dphi_trajectory['params']:
+    df_dtheta_trajectory = vectorized_df_dtheta_function(dfmu_dinput_trajectory, z, nn_parameters)
+
+    df_dtheta_trajectory = unfreeze(df_dtheta_trajectory)
+
+    for layer in df_dtheta_trajectory['params']:
         # Sum the matmul result over the entire time_span to get the final gradients
-        df_dphi_trajectory['params'][layer]['bias'] = np.einsum("Ni,Nij->j", adjoint, df_dphi_trajectory['params'][layer]['bias'])
-        df_dphi_trajectory['params'][layer]['kernel'] = np.einsum("Ni,Nijk->jk", adjoint, df_dphi_trajectory['params'][layer]['kernel'])
+        df_dtheta_trajectory['params'][layer]['bias'] = np.einsum("Ni,Nij->j", adjoint, df_dtheta_trajectory['params'][layer]['bias'])
+        df_dtheta_trajectory['params'][layer]['kernel'] = np.einsum("Ni,Nijk->jk", adjoint, df_dtheta_trajectory['params'][layer]['kernel'])
 
-    df_dphi = df_dphi_trajectory
+    df_dtheta = df_dtheta_trajectory
 
     # This evaluates only to zeroes, but for completeness sake
-        # dg_dphi_at_t = vectorized_dg_dphi_function(z, z_ref, nn_parameters)
-        # dg_dphi = jnp.einsum("Ni->i", dg_dphi_at_t)
-        # dJ_dphi = dg_dphi + df_dphi
+        # dg_dtheta_at_t = vectorized_dg_dtheta_function(z, z_ref, nn_parameters)
+        # dg_dtheta = jnp.einsum("Ni->i", dg_dtheta_at_t)
+        # dJ_dtheta = dg_dtheta + df_dtheta
 
-    dJ_dphi = df_dphi
+    dJ_dtheta = df_dtheta
 
-    flat_dJ_dphi, _ = flatten_util.ravel_pytree(dJ_dphi)
+    flat_dJ_dtheta, _ = flatten_util.ravel_pytree(dJ_dtheta)
 
     reset_fmu(fmu, model_description, Tstart, Tend)
 
-    # print(f'Loss: {loss}; Mu: {optimisation_parameters}; gradient: {dJ_dphi}')
+    # print(f'Loss: {loss}; Mu: {optimisation_parameters}; gradient: {dJ_dtheta}')
     # print(optimisation_parameters)
 
-    print(f'Loss: {loss}')
-    return loss, flat_dJ_dphi
+    print(f'Epoch: {epoch}, Loss: {loss:.5f}, first gradient value: {flat_dJ_dtheta[0]}')
+    epoch += 1
+    args[10] = epoch
+    return loss, flat_dJ_dtheta
 
 
 if __name__ == '__main__':
     # mu = float(input('Set mu value: '))
     Tstart = 0.0
     Tend = 10.0
-    nSteps = 601
+    nSteps = 1001
     t = np.linspace(Tstart, Tend, nSteps)
     z0 = np.array([1.0, 0.0])
     optimisation_parameters_ref = np.asarray([5.0])
     optimisation_parameters = np.asarray([1.0])
 
     # Neural Network
-    layers = [5, 1]
+    layers = [10, 10, 1]
     #NN Parameters
     key1, key2 = random.split(random.PRNGKey(0), 2)
     # Input size is guess from input during init
     model = ExplicitMLP(features=layers)
     nn_parameters = model.init(key2, np.zeros((1, 2)))
+    jitted_model = jax.jit(lambda p, x: model.apply(p, x))
     flat_nn_parameters, unravel_pytree = flatten_util.ravel_pytree(nn_parameters)
-
-
+    epoch = 0
 
     fmu_filename = 'Van_der_Pol_damping_input.fmu'
 
@@ -385,36 +449,39 @@ if __name__ == '__main__':
 
     fig = plt.figure()
     ax1, ax2 = fig.subplots(2, 1)
-    ax1.plot(t[:-1], z_ref[:,0])
-    ax1.plot(t[:-1], z_ref[:,1])
+    ax1.plot(t, z_ref[:,0])
+    ax1.plot(t, z_ref[:,1])
     ax1.set_title('Reference')
 
     # Pack all values needed for the opimisation into one array to give
     # to the minimize function
-    args = [t, z0, z_ref, fmu, pointers, number_of_states, vr_derivatives, vr_states, vr_input, unravel_pytree]
+    args = [t, z0, z_ref, fmu, pointers, number_of_states, vr_derivatives, vr_states, vr_input, unravel_pytree, epoch]
 
     # Reset and reinitialize the fmu for the next run after the reference run
     fmu, pointers = reset_fmu(fmu, model_description, Tstart, Tend)
 
     # Optimise the mu value via scipy
     # Optimisers CG, BFGS, Newton-CG, L-BFGS-B, TNC, SLSQP, dogleg, trust-ncg, trust-krylov, trust-exact and trust-constr
+
     res = minimize(optimisation_wrapper, flat_nn_parameters, method='BFGS', jac=True, args=args)
     print(res)
 
     # The values we optimized for are inside the result variable
     optimisation_parameters = res.x
+    nn_parameters = unravel_pytree(optimisation_parameters)
 
     # Reset the FMU again for a final run for plotting purposes
-    # reset_fmu(fmu, model_description, Tstart, Tend)
+    reset_fmu(fmu, model_description, Tstart, Tend)
     # fmu.setReal(vr_input, [optimisation_parameters[0]])
-    # z, _, __ = f_euler(z0, t, fmu, pointers, number_of_states, vr_derivatives, vr_states, vr_input)
 
-    # ax2.plot(t, z[:,0])
-    # ax2.plot(t, z[:,1])
-    # ax2.set_title('Solution')
-    # plt.show()
-    # fig.savefig('fmu_adjoint.png')
+    z, _, __ = f_euler(z0, t, fmu, pointers, number_of_states, vr_derivatives, vr_states, vr_input, training=True, nn_parameters=nn_parameters)
 
-    # path = os.path.abspath(__file__)
-    # plot_path = get_plot_path(path)
-    # plot_results(t, z, z_ref, plot_path)
+    ax2.plot(t, z[:,0])
+    ax2.plot(t, z[:,1])
+    ax2.set_title('Solution')
+    plt.show()
+    fig.savefig('fmu_adjoint.png')
+
+    path = os.path.abspath(__file__)
+    plot_path = get_plot_path(path)
+    plot_results(t, z, z_ref, plot_path)

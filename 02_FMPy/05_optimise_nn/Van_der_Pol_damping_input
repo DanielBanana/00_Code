@@ -1,0 +1,8 @@
+model Van_der_Pol_damping_input
+  Real u(start = 1.0,fixed=true);
+  Real v(start = 0.0,fixed=true);
+  input Real damping(start=1.0);
+equation
+  der(u) = v;
+  der(v) = damping - u;
+end Van_der_Pol_damping_input;
