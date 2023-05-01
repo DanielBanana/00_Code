@@ -731,6 +731,7 @@ if __name__ == '__main__':
 
     # Optimise the mu value via scipy
     # Optimisers CG, BFGS, Newton-CG, L-BFGS-B, TNC, SLSQP, dogleg, trust-ncg, trust-krylov, trust-exact and trust-constr
+    # BFGS seems not to terminate as quickly even if the loss change is small
     res = minimize(optimisation_wrapper, flat_nn_parameters, method='BFGS', jac=True, args=args)
     print(res)
     # The values we optimized for are inside the result variable
