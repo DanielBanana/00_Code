@@ -686,11 +686,6 @@ if __name__ == '__main__':
     # REFERENCE SOLUTION
     ####################################################################################
     z_ref = f_euler(z0=z0, t=t, fmu_evaluator=fmu_evaluator, model=damping, model_parameters=mu)
-    fig = plt.figure()
-    ax1, ax2 = fig.subplots(2, 1)
-    ax1.plot(t, z_ref[:,0])
-    ax1.plot(t, z_ref[:,1])
-    ax1.set_title('Reference')
     # Reset and reinitialize the fmu for the next run after the reference run
     fmu_evaluator.reset_fmu(Tstart, Tend)
 
@@ -746,12 +741,6 @@ if __name__ == '__main__':
     fmu_evaluator.training = False
 
     z, _, __ = f_euler(z0, t, fmu_evaluator, model=jitted_neural_network, model_parameters=neural_network_parameters)
-
-    ax2.plot(t, z[:,0])
-    ax2.plot(t, z[:,1])
-    ax2.set_title('Solution')
-    plt.show()
-    fig.savefig('fmu_adjoint.png')
 
     path = os.path.abspath(__file__)
     plot_path = get_plot_path(path)
