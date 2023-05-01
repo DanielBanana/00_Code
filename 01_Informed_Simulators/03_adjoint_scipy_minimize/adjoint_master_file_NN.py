@@ -80,10 +80,16 @@ def hybrid_ode(z, t, ode_parameters, nn_parameters):
 @jit
 def adjoint_ode(adj, z, z_ref, t, ode_parameters, nn_parameters):
     '''Calculates the right hand side of the adjoint system.'''
+
     df_dz = jax.jacobian(hybrid_ode, argnums=0)(z, t, ode_parameters, nn_parameters)
+    # start = time.time()
     dg_dz = jax.grad(g, argnums=0)(z, z_ref, ode_parameters, nn_parameters)
-    # d_adj = - df_dz(z, ode_parameters).T @ adj - dg_dz(z, z_ref)
+    # cp_dg = time.time()
     d_adj = - df_dz.T @ adj - dg_dz
+    # time_adj = time.time() - cp_dg
+    # time_dg = cp_dg - start
+    # print(f'Time dg: {time_dg}')
+    # print(f'Time adj: {time_adj}')
     return d_adj
 
 def g(z, z_ref, ode_parameters, nn_parameters):
@@ -127,7 +133,10 @@ def adj_euler(a0, z, z_ref, t, ode_parameters, nn_parameters):
     a[0] = a0
     for i in range(len(t)-1):
         dt = t[i+1] - t[i]
+        start = time.time()
         a[i+1] = a[i] + dt * adjoint_ode(a[i], z[i], z_ref[i], t[i], ode_parameters, nn_parameters)
+        end = time.time()
+        # print(f'Time for one adjoint step: {end-start}')
     return a
 
 # Vectorize the  jacobian df_dtheta for all time points
@@ -169,6 +178,7 @@ def function_wrapper(nn_parameters, args):
     unravel_pytree = args[4]
     epoch = args[5]
 
+    start = time.time()
     # Get the parameters out of the neural network tree structure into an array
     nn_parameters = unravel_pytree(nn_parameters)
 
@@ -200,13 +210,15 @@ def function_wrapper(nn_parameters, args):
     dJ_dtheta = df_dtheta
 
     flat_dJ_dtheta, _ = flatten_util.ravel_pytree(dJ_dtheta)
-
+    end = time.time()
+    time_opt_step = end-start
+    print(f'Time completet step: {time_opt_step}')
     print(f'Epoch: {epoch}, Loss: {loss:.5f}, first gradient value: {flat_dJ_dtheta[0]}')
     epoch += 1
     args[5] = epoch
     return loss, flat_dJ_dtheta
 
-t = np.linspace(0.0, 10.0, 1001)
+t = np.linspace(0.0, 10.0, 11)
 z0 = np.array([1.0, 0.0])
 ode_parameters_ref = np.asarray([1.0, 5.0, 1.0])
 ode_parameters = np.asarray([1.0, 1.0, 1.0])
