@@ -30,9 +30,9 @@ dimensions = 2
 root_particles = 10
 n_particles = root_particles**2
 beta = 20 # loss function weight, needs to be adjusted to typical values of problem
-learning_rate = 0.05 # gamma or time step delta t
-noise_rate = 0.1 # sigma
-drift_rate = 1.0 # lambda
+gamma = 0.05 # learning_rate or time step delta t
+sigma = 0.1 # noise_rate
+lambda_ = 1.0 # drift rate
 stopping_criterion = 1e-8
 n_iterations = 100
 particle_indices = list(range(0, n_particles))
@@ -83,37 +83,9 @@ ax.set_ylim(y_range)
 
 centers = []
 
-# for k in range(n_steps):
-#     # Step 1.1 Calculate the function values (or approximated values) of the to be
-#     # minimised function at the location of the particles
-#     L = rastrigin(X[:, 0], X[:, 1])
-#     # Step 2.2 Calcualate the centroid of the set after the discrete analogue of Laplace's principle
-#     mu = np.exp(-beta*L)
-#     # Expand dimension of factor mu so elementwise multiplication with X is possible
-#     mu = mu.reshape(-1, 1)
-#     center = np.sum(X*mu, 0)/np.sum(mu, 0)
-#     # Step 2.3 Update particles
-#     # Calculate deviation of particles from common center from center deviation
-#     deviation_from_center = X - center
-#     consensus_term = drift_rate*learning_rate*deviation_from_center
-#     # Calculate deviation from common center with random disturbance
-#     normal_disturbance = np.random.normal(0.0, 1.0, (dimensions))
-#     diffusion_term = noise_rate*np.sqrt(learning_rate)*deviation_from_center*normal_disturbance
-#     X = X - consensus_term - diffusion_term
-#     centers.append(center)
-    # if k > 0:
-    #     center_difference = centers[-2] - centers[-1]
-    #     # Step 3: Check the stopping criterion
-    #     if 1/dimensions*np.linalg.norm(center_difference)**2 <= stopping_criterion:
-    #         break
-    # if k%10==0:
-    #     ax.scatter(center[0], center[1], color='red', alpha = k/(2*n_steps) + 0.5)
-    #     p_plot = ax.scatter(X[:,0], X[:,1], marker='o', color='black', alpha=k/n_steps*0.1)
+def update(X, beta, lambda_, gamma, sigma, centers, noise):
 
-
-def update():
-
-    global X, beta, drift_rate, learning_rate, noise_rate, centers, noise
+    # global X, beta, lambda_, gamma, sigma, centers, noise
     L = rastrigin(X)
     # Step 2.2 Calcualate the centroid of the set after the discrete analogue of Laplace's principle
     mu = np.exp(-beta*L)
@@ -123,29 +95,30 @@ def update():
     # Step 2.3 Update particles
     # Calculate deviation of particles from common center from center deviation
     deviation_from_center = X - center
-    consensus_term = drift_rate*learning_rate*deviation_from_center
+    consensus_term = lambda_*gamma*deviation_from_center
     # Calculate deviation from common center with random disturbance
     if noise == 'particle':
         normal_disturbance = np.random.normal(0.0, 1.0, (X.shape[0], X.shape[1]))
-        diffusion_term = noise_rate*np.sqrt(learning_rate)*deviation_from_center*normal_disturbance
+        diffusion_term = sigma*np.sqrt(gamma)*deviation_from_center*normal_disturbance
     else:
         normal_disturbance = np.random.normal(0.0, 1.0, (X.shape[1]))
-        diffusion_term = noise_rate*np.sqrt(learning_rate)*deviation_from_center*normal_disturbance
+        diffusion_term = sigma*np.sqrt(gamma)*deviation_from_center*normal_disturbance
     X = X - consensus_term - diffusion_term
     centers.append(center)
+    return X, centers
 
-def animate(i):
+def animate(i, X, beta, lambda_, gamma, sigma, centers, noise):
     "Steps of CBO. algorithm and show in plot"
     title = f'Iteration {i:02d}'
-    global beta
     beta = beta
-    update()
+    X_new, centers = update(X[-1], beta, lambda_, gamma, sigma, centers, noise)
     ax.set_title(title)
-    p_plot.set_offsets(X)
+    p_plot.set_offsets(X_new)
     center_plot.set_offsets(centers[-1].reshape(1, -1))
+    X.append(X_new)
     return ax, p_plot, center_plot
 
-anim = FuncAnimation(fig, animate, frames=list(range(n_iterations)), interval=50, blit=False, repeat=True)
+anim = FuncAnimation(fig, animate, frames=list(range(n_iterations)), interval=50, blit=False, repeat=True, fargs=[[X], beta, lambda_, gamma, sigma, centers, noise])
 path = os.path.abspath(__file__)
 file_path = get_plot_path(path)
 anim.save(file_path + '.gif', dpi=120, writer='imagemagick')
