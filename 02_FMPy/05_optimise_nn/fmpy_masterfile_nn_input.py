@@ -210,8 +210,6 @@ class FMUEvaluator:
             self.fmu.setReal(self.vr_input, [control])
             status = self.fmu.getDerivatives(self.pointers._pdx, self.pointers.dx.size)
 
-        # z[i+1] = z[i] + dt * derivatives
-
         self.pointers.x += dt * self.pointers.dx
 
         status = self.fmu.setContinuousStates(self.pointers._px, self.pointers.x.size)
@@ -291,124 +289,6 @@ class FMUEvaluator:
         self.fmu.setReal(self.vr_states, z0)
         self.fmu.getContinuousStates(self.pointers._px, self.pointers.x.size)
 
-# Not needed anymore
-def prepare_fmu(fmu_filename, Tstart, Tend):
-    model_description = read_model_description(fmu_filename)
-    # extract the FMU
-    unzipdir = extract(fmu_filename)
-    fmu = fmpy.fmi2.FMU2Model(guid=model_description.guid,
-                    unzipDirectory=unzipdir,
-                    modelIdentifier=model_description.modelExchange.modelIdentifier,
-                    instanceName='instance1')
-    # instantiate
-    fmu.instantiate()
-
-    # set variable start values (of "ScalarVariable / <type> / start")
-    pass
-
-    # initialize
-    # determine continous and discrete states
-    fmu.setupExperiment(startTime=Tstart, stopTime=Tend)
-    fmu.enterInitializationMode()
-
-    # set the input start values at time = Tstart
-    pass
-
-    fmu.exitInitializationMode()
-
-    nx = model_description.numberOfContinuousStates
-    nz = model_description.numberOfEventIndicators
-    initialEventMode = False
-    enterEventMode = False
-    timeEvent = False
-    stateEvent = False
-    previous_z = np.zeros(nz)
-
-    # retrieve initial state x and
-    # nominal values of x (if absolute tolerance is needed)
-    # pointers to exchange state and derivative vectors with FMU
-    pointers = SimpleNamespace(
-        x=np.zeros(nx),
-        dx=np.zeros(nx),
-        z=np.zeros(nz),
-    )
-    pointers._px = pointers.x.ctypes.data_as(
-        ctypes.POINTER(ctypes.c_double)
-    )
-    pointers._pdx = pointers.dx.ctypes.data_as(
-        ctypes.POINTER(ctypes.c_double)
-    )
-    pointers._pz = pointers.z.ctypes.data_as(
-        ctypes.POINTER(ctypes.c_double)
-    )
-    status = fmu.getContinuousStates(pointers._px, pointers.x.size)
-
-    # collect the value references
-    vrs = {}
-    for variable in model_description.modelVariables:
-        vrs[variable.name] = variable.valueReference
-
-    # get the value references for the variables we want to get/set
-    vr_states   = [vrs['u'], vrs['v']]
-    vr_derivatives = [vrs['der(u)'], vrs['der(v)']]
-    vr_input = [vrs['damping']]
-
-    fmu.enterContinuousTimeMode()
-
-    return fmu, model_description, pointers, vr_states, vr_derivatives, vr_input
-
-# Not needed anymroe
-def reset_fmu(fmu, model_description, Tstart, Tend):
-    fmu.reset()
-    nx = model_description.numberOfContinuousStates
-    nz = model_description.numberOfEventIndicators
-    # initialize
-    # determine continous and discrete states
-    fmu.setupExperiment(startTime=Tstart, stopTime=Tend)
-    fmu.enterInitializationMode()
-
-    # set the input start values at time = Tstart
-    pass
-
-    fmu.exitInitializationMode()
-
-    # retrieve initial state x and
-    # nominal values of x (if absolute tolerance is needed)
-    # pointers to exchange state and derivative vectors with FMU
-    pointers = SimpleNamespace(
-        x=np.zeros(nx),
-        dx=np.zeros(nx),
-        z=np.zeros(nz),
-    )
-    pointers._px = pointers.x.ctypes.data_as(
-        ctypes.POINTER(ctypes.c_double)
-    )
-    pointers._pdx = pointers.dx.ctypes.data_as(
-        ctypes.POINTER(ctypes.c_double)
-    )
-    pointers._pz = pointers.z.ctypes.data_as(
-        ctypes.POINTER(ctypes.c_double)
-    )
-
-    fmu.enterContinuousTimeMode()
-
-    return fmu, pointers
-
-# Not needed anymore
-def f(fmu, mu, pointers, vr_input):
-    fmu.setReal(vr_input, [damping(mu, pointers.x)])
-    status = fmu.getDerivatives(pointers._pdx, pointers.dx.size)
-    return pointers.dx
-
-# Not needed anymore
-def hybrid_f(fmu_evaluator, model, model_parameters):
-    control = model(model_parameters, fmu_evaluator.pointers.x)
-    fmu_evaluator.fmu.setReal(fmu_evaluator.vr_input, [control])
-    status = fmu_evaluator.fmu.getDerivatives(fmu_evaluator.pointers._pdx, fmu_evaluator.pointers.dx.size)
-    df_dz_at_t = dfmu_dz_function(fmu_evaluator.fmu, fmu_evaluator.number_of_states, fmu_evaluator.vr_derivatives, fmu_evaluator.vr_states)
-    df_dinput_at_t = dfmu_dinput_function(fmu_evaluator.fmu, fmu_evaluator.vr_derivatives, fmu_evaluator.vr_input)
-    return fmu_evaluator.pointers.dx, df_dz_at_t, df_dinput_at_t
-
 @jit
 def adjoint_f(adj, z, z_ref, t, optimisation_parameters, df_dz_at_t):
     '''Calculates the right hand side of the adjoint system.'''
@@ -416,58 +296,28 @@ def adjoint_f(adj, z, z_ref, t, optimisation_parameters, df_dz_at_t):
     d_adj = - df_dz_at_t.T @ adj - dg_dz
     return d_adj
 
-# Not needed anymore
-def dfmu_dz_function(fmu, number_of_states, vr_derivatives, vr_states):
-    """Calculate the jacobian of the fmu function w.r.t. the state variables
+# def adjoint_f(adj, z, z_ref, t, optimisation_parameters, df_dz_at_t):
+#     start = time.time()
+#     dg_dz = adjoint_f_1(z, z_ref, optimisation_parameters)
+#     cp_dg = time.time()
+#     d_adj = adjoint_f_2(df_dz_at_t, adj, dg_dz)
+#     cp_adj = time.time()
 
-    Parameters
-    ----------
-    fmu : fmpy.fmi2.FMU2Model
-        The python object which controls the FMU
-    number_of_states : int
-        How many states the FMU equation has (often times 2)
-    vr_derivatives : List of int
-        The variable reference numbers of the derivative variables. Each variable
-        in the FMU has a indexing number.
-    vr_states : List of int
-        The variable reference numbers of the state variables. Each variable
-        in the FMU has a indexing number.
+#     time_dg = cp_dg - start
+#     time_adj = cp_adj-cp_dg
 
-    Returns
-    -------
-    _type_
-        The jacobian as a numpy array
-    """
-    current_df_dz = np.zeros((2,2))
-    for j in range(number_of_states):
-            current_df_dz[:, j] = np.array(fmu.getDirectionalDerivative(vr_derivatives, [vr_states[j]], [1.0]))
-    return current_df_dz
+#     return d_adj, time_dg, time_adj
 
-@jit
-def df_dz_function(dfmu_dz, dinput_dz, dfmu_dinput):
-    return jnp.array(dfmu_dz + dinput_dz * dfmu_dinput)
+# @jit
+# def adjoint_f_1(z, z_ref, optimisation_parameters):
+#     dg_dz = jax.grad(g, argnums=0)(z, z_ref, optimisation_parameters)
+#     return dg_dz
 
-# Not needed anymore
-def dfmu_dinput_function(fmu, vr_derivatives, vr_input):
-    """Calculate the jacobian of the fmu function w.r.t. the input/control variables
+# @jit
+# def adjoint_f_2(df_dz_at_t, adj, dg_dz):
+#     d_adj = - df_dz_at_t.T @ adj - dg_dz
+#     return d_adj
 
-    Parameters
-    ----------
-    fmu : fmpy.fmi2.FMU2Model
-        The python object which controls the FMU
-    vr_derivatives : List of int
-        The variable reference numbers of the derivative variables. Each variable
-        in the FMU has a indexing number.
-    vr_input : List of int
-        The variable reference numbers of the input variables. Each variable
-        in the FMU has a indexing number.
-
-    Returns
-    -------
-    _type_
-        The jacobian as a numpy array
-    """
-    return fmu.getDirectionalDerivative(vr_derivatives, vr_input, [1.0])
 
 def df_dtheta_function(df_dinput, dinput_dtheta):
     """Calculate the jacobian of the hybrid function (FMU + ML) with respect to the ML
@@ -513,11 +363,12 @@ def f_euler(z0, t, fmu_evaluator: FMUEvaluator, model, model_parameters=None):
     z[0] = z0
     # Forward the initial state to the FMU
     fmu_evaluator.setup_initial_state(z0)
-
+    times = []
     if fmu_evaluator.training:
         dfmu_dz_trajectory = []
         dfmu_dinput_trajectory = []
     for i in range(len(t)-1):
+        start = time.time()
         status = fmu_evaluator.fmu.setTime(t[i])
         dt = t[i+1] - t[i]
 
@@ -533,6 +384,10 @@ def f_euler(z0, t, fmu_evaluator: FMUEvaluator, model, model_parameters=None):
         if terminateSimulation:
             break
 
+        end = time.time()
+        times.append(end-start)
+    mean_time = np.asarray(times).mean()
+    print(f'Mean calculation time for ode step and jacobians: {mean_time}')
     # We get on jacobian less then we get datapoints, since we get the jacobian
     # with every derivative we calculate, and we have one datapoint already given
     # at the start
@@ -551,10 +406,22 @@ def adj_euler(a0, z, z_ref, t, optimisation_parameters, df_dz_trajectory):
     '''Applies forward Euler to the adjoint ODE and returns the trajectory'''
     a = np.zeros((t.shape[0], 2))
     a[0] = a0
+    # times_dg = []
+    # times_adj = []
+    times = []
     for i in range(len(t)-1):
         dt = t[i+1] - t[i]
-        d_adj =  adjoint_f(a[i], z[i], z_ref[i], t[i], optimisation_parameters, df_dz_trajectory[i])
-        a[i+1] = a[i] + dt * d_adj
+        start = time.time()
+        a[i+1] = a[i] + dt * adjoint_f(a[i], z[i], z_ref[i], t[i], optimisation_parameters, df_dz_trajectory[i])
+        end = time.time()
+        # times_dg.append(time_dg)
+        # times_adj.append(time_adj)
+        times.append(end-start)
+    # mean_dg = np.asarray(times_dg).mean()
+    # mean_adj = np.asarray(times_adj).mean()
+    times = np.asarray(times).mean()
+    # print(f'Mean dg calc time: {mean_dg}, mean adj calc time: {mean_adj}')
+    print(f'Mean time for one adjoint step: {times}')
     return a
 
 # The Neural Network structure class
@@ -617,10 +484,10 @@ def optimisation_wrapper(model_parameters, args):
 
     a0 = np.array([0, 0])
     adjoint = adj_euler(a0, np.flip(z, axis=0), np.flip(z_ref, axis=0), np.flip(t), model_parameters, np.flip(df_dz_trajectory, axis=0))
-    adjoint = np.flip(adjoint, axis=0)
     cp_adjoint = time.time()
+    adjoint = np.flip(adjoint, axis=0)
     time_adjoint = cp_adjoint - cp_df_dz #0.37 (Main time sink)
-    # print(f'Adjoint time: {time_adjoint}')
+    print(f'Adjoint time: {time_adjoint}')
 
     dinput_dtheta = dinput_dtheta_function(model_parameters, z)
 
