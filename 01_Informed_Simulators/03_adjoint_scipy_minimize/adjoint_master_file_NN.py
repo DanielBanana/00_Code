@@ -53,7 +53,7 @@ config.update("jax_enable_x64", True)
 #     mu = ode_parameters[1]
 #     mass = ode_parameters[2]
 #     derivative = jnp.array([jnp.array((z[1],)),
-#                             jnp.array((-kappa*z[0]/mass,)) + model.apply(nn_parameters, z) + jnp.array(1.2*jnp.cos(0.628*t))] ).flatten()
+#                             jnp.array((-kappa*z[0]/mass,)) + jitted_neural_network(nn_parameters, z) + jnp.array(1.2*jnp.cos(0.628*t))] ).flatten()
 #     return derivative
 
 @jit
@@ -74,22 +74,15 @@ def hybrid_ode(z, t, ode_parameters, nn_parameters):
     mu = ode_parameters[1]
     mass = ode_parameters[2]
     derivative = jnp.array([jnp.array((z[1],)),
-                            jnp.array((-kappa*z[0]/mass,)) + model.apply(nn_parameters, z)]).flatten()
+                            jnp.array((-kappa*z[0]/mass,)) + jitted_neural_network(nn_parameters, z)]).flatten()
     return derivative
 
 @jit
 def adjoint_ode(adj, z, z_ref, t, ode_parameters, nn_parameters):
     '''Calculates the right hand side of the adjoint system.'''
-
     df_dz = jax.jacobian(hybrid_ode, argnums=0)(z, t, ode_parameters, nn_parameters)
-    # start = time.time()
     dg_dz = jax.grad(g, argnums=0)(z, z_ref, ode_parameters, nn_parameters)
-    # cp_dg = time.time()
     d_adj = - df_dz.T @ adj - dg_dz
-    # time_adj = time.time() - cp_dg
-    # time_dg = cp_dg - start
-    # print(f'Time dg: {time_dg}')
-    # print(f'Time adj: {time_adj}')
     return d_adj
 
 def g(z, z_ref, ode_parameters, nn_parameters):
@@ -124,19 +117,22 @@ def hybrid_euler(z0, t, ode_parameters, nn_parameters):
         end = time.time()
         times.append(end-start)
     mean_time = np.asarray(times).mean()
-    # print(f'Mean calculation time for derivatives and jacobians: {mean_time}')
+    print(f'Mean calculation time for ode step and jacobians: {mean_time}')
     return z
 
 def adj_euler(a0, z, z_ref, t, ode_parameters, nn_parameters):
     '''Applies forward Euler to the adjoint ODE and returns the trajectory'''
     a = np.zeros((t.shape[0], 2))
     a[0] = a0
+    times = []
     for i in range(len(t)-1):
         dt = t[i+1] - t[i]
         start = time.time()
         a[i+1] = a[i] + dt * adjoint_ode(a[i], z[i], z_ref[i], t[i], ode_parameters, nn_parameters)
         end = time.time()
-        # print(f'Time for one adjoint step: {end-start}')
+        times.append(end-start)
+    times = np.asarray(times).mean()
+    print(f'Mean time for one adjoint step: {times}')
     return a
 
 # Vectorize the  jacobian df_dtheta for all time points
@@ -190,9 +186,11 @@ def function_wrapper(nn_parameters, args):
     # adjoint always has the initial condition of all 0s.
     a0 = np.array([0, 0])
     # Calculate the adjoint solution to the problem
+    adj_start = time.time()
     adjoint = adj_euler(a0, np.flip(z, axis=0), np.flip(z_ref, axis=0), np.flip(t), ode_parameters, nn_parameters)
     adjoint = np.flip(adjoint, axis=0)
-
+    adj_time = time.time() - start
+    print(f'Adjoint time: {adj_time}')
     # Calculate the gradient of the hybrid ode with respect to the nn_parameters
     df_dtheta_trajectory = vectorized_df_dtheta_function(z, t, ode_parameters, nn_parameters)
 
@@ -212,24 +210,25 @@ def function_wrapper(nn_parameters, args):
     flat_dJ_dtheta, _ = flatten_util.ravel_pytree(dJ_dtheta)
     end = time.time()
     time_opt_step = end-start
-    print(f'Time completet step: {time_opt_step}')
-    print(f'Epoch: {epoch}, Loss: {loss:.5f}, first gradient value: {flat_dJ_dtheta[0]}')
+    # print(f'Time completet step: {time_opt_step}')
+    print(f'Epoch: {epoch}, Loss: {loss:.5f}, Time: {time_opt_step}')
     epoch += 1
     args[5] = epoch
     return loss, flat_dJ_dtheta
 
-t = np.linspace(0.0, 10.0, 11)
+t = np.linspace(0.0, 20.0, 1001)
 z0 = np.array([1.0, 0.0])
-ode_parameters_ref = np.asarray([1.0, 5.0, 1.0])
+ode_parameters_ref = np.asarray([1.0, 8.53, 1.0])
 ode_parameters = np.asarray([1.0, 1.0, 1.0])
 
 
-layers = [5, 5, 1]
+layers = [40, 40, 1]
 #NN Parameters
 key1, key2 = random.split(random.PRNGKey(0), 2)
 # Input size is guess from input during init
-model = ExplicitMLP(features=layers)
-nn_parameters = model.init(key2, np.zeros((1, 2)))
+neural_network = ExplicitMLP(features=layers)
+nn_parameters = neural_network.init(key2, np.zeros((1, 2)))
+jitted_neural_network = jax.jit(lambda p, x: neural_network.apply(p, x))
 # nn_parameters = unfreeze(nn_parameters)
 flat_nn_parameters, unravel_pytree = flatten_util.ravel_pytree(nn_parameters)
 epoch = 0
@@ -240,7 +239,7 @@ z_ref = f_euler(z0, t, ode_parameters_ref)
 args = [t, z0, z_ref, ode_parameters, unravel_pytree, epoch]
 
 # Possible methods include: BFGS, SLSQP, L-BFGS-B, CG
-method = 'BFGS'
+method = 'SLSQP'
 res = minimize(function_wrapper, flat_nn_parameters, method=method, jac=True, args=args, options={'maxiter': 1000})
 
 flat_nn_parameters = res['x']
