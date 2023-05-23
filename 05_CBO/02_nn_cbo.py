@@ -8,6 +8,13 @@ from functools import partial
 from jax.config import config; config.update("jax_enable_x64", True)
 import warnings
 import matplotlib.pyplot as plt
+import os
+import sys
+
+# To use the plot_results file we need to add the uppermost folder to the PYTHONPATH
+# Only Works if file gets called from 00_Code
+sys.path.insert(0, os.getcwd())
+from plot_results import plot_results, get_plot_path
 
 def f(x):
     """Function we want the Neural Network to approximate
@@ -22,7 +29,7 @@ def f(x):
     int, float or numpy.array
         output
     """
-    return np.sin(x)
+    return x*x
 
 # The Neural Network structure class
 class ExplicitMLP(nn.Module):
@@ -276,7 +283,7 @@ class CBO():
 
         self.particles[batch] =  self.particles[batch] - consensus_term - disturbance_term
 
-        return energy_values.mean(), consensus_point, break_flag
+        return evaluation_function(parameters=consensus_point.reshape(1,-1))[0,0], consensus_point, break_flag
 
 def evaluation_function(sample_set: Tuple, sample_index: np.array, model: ExplicitMLP, parameters):
     """The evaluation function for the update function of the CBO.
@@ -349,12 +356,15 @@ def loss(x, x_ref):
     """
     return (x-x_ref)**2
 
+path = os.path.abspath(__file__)
+plot_path = get_plot_path(path)
+
 # NEURAL NETWORK
 layers = [40, 1]
 neural_network = ExplicitMLP(features=layers)
 neural_network.set_key()
 n_training_samples = 100
-sample_batch_size = 100 # Choosing sample_batch_size such that it does not divide n_training_samples currently throws an error TODO
+sample_batch_size = 20 # Choosing sample_batch_size such that it does not divide n_training_samples currently throws an error TODO
 n_validation_samples = 20
 sample_input_dimension = 1
 
@@ -370,9 +380,9 @@ training_sample_indices = np.asarray(list(range(n_training_samples)))
 validation_sample_indices = np.asarray(list(range(n_validation_samples)))
 
 # CBO
-beta = 100
-gamma = 0.5
-sigma = 0.001 ** 0.5
+beta = 10
+gamma = 0.1
+sigma = 0.4 ** 0.5
 lambda_ = 1.0
 eps = 1e-5
 n_particles = 1000
@@ -402,7 +412,7 @@ X = np.arange(-5,5,0.25)
 Z = f(np.asarray(X))
 ax.plot(X,Z)
 ax.scatter(training_input.T, nn_output)
-fig.savefig('untrained_predictions.png')
+fig.savefig(plot_path + '_' + 'untrained_predictions.png')
 
 # PLOT THE TRAINING DATA
 X = np.arange(-5,5,0.25)
@@ -410,7 +420,7 @@ Z = f(np.asarray(X))
 fig, ax = plt.subplots()
 ax.plot(X,Z)
 ax.scatter(training_input, training_output)
-fig.savefig('training_data_2D.png')
+fig.savefig(plot_path + '_' + 'training_data_2D.png')
 
 
 
@@ -441,8 +451,9 @@ for epoch in range(cbo.n_iterations):
         print(f'Epoch: {epoch}, batch: {(batch_index+1)*batch_size:4.0f}/{n_particles:4.0f}, training loss: {training_loss:3.3f}, beta: {cbo.beta:.03f}, gamma: {cbo.gamma:.03f}, sigma: {cbo.sigma:.08f}')
 
     if epoch % val_freq == 0 or epoch == cbo.n_iterations - 1:
+        full_training_loss = val_loss = evaluation_function(sample_set=training_set, sample_index=range(len(training_set)), model=neural_network, parameters=epoch_consensuses[-1])
         val_loss = evaluation_function(sample_set=validation_set, sample_index=range(len(validation_set)), model=neural_network, parameters=epoch_consensuses[-1])
-        print(f'validation loss: {val_loss[0]}')
+        print(f'Full training loss: {full_training_loss[0]:4.4f}, validation loss: {val_loss[0]:4.4f}')
     epoch_train_loss = np.asarray(epoch_train_losses).mean()
     val_losses.append(val_loss)
     train_losses.append(epoch_train_loss)
@@ -457,12 +468,12 @@ for epoch in range(cbo.n_iterations):
 fig, ax = plt.subplots()
 train_losses = np.asarray(train_losses)
 ax.plot(train_losses)
-fig.savefig('train_losses.png')
+fig.savefig(plot_path + '_' + 'train_losses.png')
 
 fig, ax = plt.subplots()
 val_losses = np.asarray(val_losses)
 ax.plot(val_losses)
-fig.savefig('validation_losses.png')
+fig.savefig(plot_path + '_' + 'validation_losses.png')
 
 nn_output = solution_function(sample_set=training_set, sample_index=training_sample_indices, model=neural_network, parameters=consensus_point.T)
 fig, ax = plt.subplots()
@@ -470,13 +481,13 @@ X = np.arange(-5,5,0.25)
 Z = f(np.asarray(X))
 ax.plot(X,Z)
 ax.scatter(training_input.T, nn_output)
-fig.savefig('train_predictions.png')
+fig.savefig(plot_path + '_' + 'train_predictions.png')
 
 nn_output = solution_function(sample_set=validation_set, sample_index=validation_sample_indices, model=neural_network, parameters=consensus_point.T)
 fig, ax = plt.subplots()
 ax.plot(X,Z)
 ax.scatter(validation_input.T, nn_output)
-fig.savefig('val_predictions.png')
+fig.savefig(plot_path + '_' + 'val_predictions.png')
 
 
 
