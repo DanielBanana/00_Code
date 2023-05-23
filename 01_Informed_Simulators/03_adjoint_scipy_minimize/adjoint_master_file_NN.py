@@ -78,7 +78,7 @@ def hybrid_ode(z, t, ode_parameters, nn_parameters):
     return derivative
 
 @jit
-def adjoint_ode(adj, z, z_ref, t, ode_parameters, nn_parameters):
+def adjoint_f(adj, z, z_ref, t, ode_parameters, nn_parameters):
     '''Calculates the right hand side of the adjoint system.'''
     df_dz = jax.jacobian(hybrid_ode, argnums=0)(z, t, ode_parameters, nn_parameters)
     dg_dz = jax.grad(g, argnums=0)(z, z_ref, ode_parameters, nn_parameters)
@@ -109,15 +109,9 @@ def hybrid_euler(z0, t, ode_parameters, nn_parameters):
     '''Applies forward Euler to the hybrid ODE and returns the trajectory'''
     z = np.zeros((t.shape[0], 2))
     z[0] = z0
-    times = []
     for i in range(len(t)-1):
         dt = t[i+1] - t[i]
-        start = time.time()
         z[i+1] = z[i] + dt * hybrid_ode(z[i], t[i], ode_parameters, nn_parameters)
-        end = time.time()
-        times.append(end-start)
-    mean_time = np.asarray(times).mean()
-    print(f'Mean calculation time for ode step and jacobians: {mean_time}')
     return z
 
 def adj_euler(a0, z, z_ref, t, ode_parameters, nn_parameters):
@@ -127,12 +121,8 @@ def adj_euler(a0, z, z_ref, t, ode_parameters, nn_parameters):
     times = []
     for i in range(len(t)-1):
         dt = t[i+1] - t[i]
-        start = time.time()
-        a[i+1] = a[i] + dt * adjoint_ode(a[i], z[i], z_ref[i], t[i], ode_parameters, nn_parameters)
-        end = time.time()
-        times.append(end-start)
-    times = np.asarray(times).mean()
-    print(f'Mean time for one adjoint step: {times}')
+        d_adj = adjoint_f(a[i], z[i], z_ref[i], t[i], ode_parameters, nn_parameters)
+        a[i+1] = a[i] + dt * d_adj
     return a
 
 # Vectorize the  jacobian df_dtheta for all time points
@@ -146,12 +136,8 @@ vectorized_dg_dtheta_function = jit(jax.vmap(dg_dtheta_function, in_axes=(0, 0, 
 # The Neural Network structure class
 class ExplicitMLP(nn.Module):
   features: Sequence[int]
-
   def setup(self):
-    # we automatically know what to do with lists, dicts of submodules
     self.layers = [nn.Dense(feat) for feat in self.features]
-    # for single submodules, we would just write:
-    # self.layer1 = nn.Dense(feat1)
 
   def __call__(self, inputs):
     x = inputs
@@ -165,7 +151,6 @@ class ExplicitMLP(nn.Module):
 def function_wrapper(nn_parameters, args):
     '''This is a function wrapper for the optimisation function. It returns the
     loss and the jacobian'''
-
     # Unpack the arguments
     t = args[0]
     z0 = args[1]
@@ -175,22 +160,22 @@ def function_wrapper(nn_parameters, args):
     epoch = args[5]
 
     start = time.time()
+
     # Get the parameters out of the neural network tree structure into an array
     nn_parameters = unravel_pytree(nn_parameters)
 
     # Calculate the reference solution (could do this out of the the function wrapper)
     # calculate the prediction of the hybrid model and calculate the loss w.r.t. the reference
-    z = hybrid_euler(z0, t, ode_parameters, nn_parameters)
+    z = hybrid_euler(z0, t, ode_parameters, nn_parameters) # 0.01-0.06s
     loss = J(z, z_ref, ode_parameters, nn_parameters)
 
-    # adjoint always has the initial condition of all 0s.
-    a0 = np.array([0, 0])
-    # Calculate the adjoint solution to the problem
+
     adj_start = time.time()
+    a0 = np.array([0, 0])
     adjoint = adj_euler(a0, np.flip(z, axis=0), np.flip(z_ref, axis=0), np.flip(t), ode_parameters, nn_parameters)
     adjoint = np.flip(adjoint, axis=0)
-    adj_time = time.time() - start
-    print(f'Adjoint time: {adj_time}')
+    adjoint_time = time.time() - adj_start
+
     # Calculate the gradient of the hybrid ode with respect to the nn_parameters
     df_dtheta_trajectory = vectorized_df_dtheta_function(z, t, ode_parameters, nn_parameters)
 
@@ -202,24 +187,20 @@ def function_wrapper(nn_parameters, args):
         # Sum the matmul result over the entire time_span to get the final gradients
         df_dtheta_trajectory['params'][layer]['bias'] = np.einsum("iN,iNj->j", adjoint, df_dtheta_trajectory['params'][layer]['bias'])
         df_dtheta_trajectory['params'][layer]['kernel'] = np.einsum("iN,iNjk->jk", adjoint, df_dtheta_trajectory['params'][layer]['kernel'])
-
     df_dtheta = df_dtheta_trajectory
-
     dJ_dtheta = df_dtheta
-
     flat_dJ_dtheta, _ = flatten_util.ravel_pytree(dJ_dtheta)
+
     end = time.time()
-    time_opt_step = end-start
-    # print(f'Time completet step: {time_opt_step}')
-    print(f'Epoch: {epoch}, Loss: {loss:.5f}, Time: {time_opt_step}')
+    print(f'Epoch: {epoch}, Loss: {loss:.5f}, Time: {end-start:3.5f}, Adjoint Time: {adjoint_time:3.5f}')
     epoch += 1
     args[5] = epoch
     return loss, flat_dJ_dtheta
 
 t = np.linspace(0.0, 20.0, 1001)
 z0 = np.array([1.0, 0.0])
-ode_parameters_ref = np.asarray([1.0, 8.53, 1.0])
-ode_parameters = np.asarray([1.0, 1.0, 1.0])
+ode_parameters_ref = np.asarray([1.0, 5.0, 1.0])
+
 
 
 layers = [40, 40, 1]
@@ -229,16 +210,16 @@ key1, key2 = random.split(random.PRNGKey(0), 2)
 neural_network = ExplicitMLP(features=layers)
 nn_parameters = neural_network.init(key2, np.zeros((1, 2)))
 jitted_neural_network = jax.jit(lambda p, x: neural_network.apply(p, x))
-# nn_parameters = unfreeze(nn_parameters)
+
 flat_nn_parameters, unravel_pytree = flatten_util.ravel_pytree(nn_parameters)
 epoch = 0
 
 z_ref = f_euler(z0, t, ode_parameters_ref)
 
 # Put all arguments the optimization needs into one array for the minimize function
-args = [t, z0, z_ref, ode_parameters, unravel_pytree, epoch]
+args = [t, z0, z_ref, ode_parameters_ref, unravel_pytree, epoch]
 
-# Possible methods include: BFGS, SLSQP, L-BFGS-B, CG
+# Optimisers: CG, BFGS, Newton-CG, L-BFGS-B, TNC, SLSQP, dogleg, trust-ncg, trust-krylov, trust-exact and trust-constr
 method = 'SLSQP'
 res = minimize(function_wrapper, flat_nn_parameters, method=method, jac=True, args=args, options={'maxiter': 1000})
 
