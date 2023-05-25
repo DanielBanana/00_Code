@@ -90,11 +90,11 @@ def g(z, z_ref, ode_parameters, nn_parameters):
 
     This function can either take individual floats for z
     and z_ref or whole numpy arrays'''
-    return jnp.sum(0.5 * (z_ref - z)**2, axis = 0)
+    return jnp.mean(0.5 * (z_ref - z)**2, axis = 0)
 
 def J(z, z_ref, ode_parameters, nn_parameters):
     '''Calculates the complete loss of a trajectory w.r.t. a reference trajectory'''
-    return np.sum(g(z, z_ref, ode_parameters, nn_parameters))
+    return np.mean(g(z, z_ref, ode_parameters, nn_parameters))
 
 def f_euler(z0, t, ode_parameters):
     '''Applies forward Euler to the original ODE and returns the trajectory'''
@@ -139,6 +139,12 @@ class ExplicitMLP(nn.Module):
   def setup(self):
     self.layers = [nn.Dense(feat) for feat in self.features]
 
+    # layers = []
+    # for feat in self.features:
+    #     layers.append(nn.Dense(feat))
+    #     layers.append(nn.Dropout(0.2))
+    # self.layers = layers
+
   def __call__(self, inputs):
     x = inputs
     for i, lyr in enumerate(self.layers):
@@ -158,6 +164,7 @@ def function_wrapper(nn_parameters, args):
     ode_parameters = args[3]
     unravel_pytree = args[4]
     epoch = args[5]
+    old_loss = args[6]
 
     start = time.time()
 
@@ -169,6 +176,8 @@ def function_wrapper(nn_parameters, args):
     z = hybrid_euler(z0, t, ode_parameters, nn_parameters) # 0.01-0.06s
     loss = J(z, z_ref, ode_parameters, nn_parameters)
 
+    if loss < old_loss:
+        args[7] = nn_parameters
 
     adj_start = time.time()
     a0 = np.array([0, 0])
@@ -192,43 +201,61 @@ def function_wrapper(nn_parameters, args):
     flat_dJ_dtheta, _ = flatten_util.ravel_pytree(dJ_dtheta)
 
     end = time.time()
-    print(f'Epoch: {epoch}, Loss: {loss:.5f}, Time: {end-start:3.5f}, Adjoint Time: {adjoint_time:3.5f}')
+    print(f'Epoch: {epoch}, Loss: {loss:.5f}, Time: {end-start:3.5f}')
+
+    if np.abs(loss - old_loss) < 0.1:
+        flat_dJ_dtheta += np.random.normal(0, 10/epoch, flat_dJ_dtheta.shape)
+
     epoch += 1
     args[5] = epoch
+    args[6] = loss
     return loss, flat_dJ_dtheta
 
-t = np.linspace(0.0, 20.0, 1001)
-z0 = np.array([1.0, 0.0])
+
 ode_parameters_ref = np.asarray([1.0, 5.0, 1.0])
 
-
-
-layers = [40, 40, 1]
+layers = [20, 20, 1]
 #NN Parameters
-key1, key2 = random.split(random.PRNGKey(0), 2)
+key1, key2, key3 = random.split(random.PRNGKey(0), 3)
 # Input size is guess from input during init
 neural_network = ExplicitMLP(features=layers)
 nn_parameters = neural_network.init(key2, np.zeros((1, 2)))
 jitted_neural_network = jax.jit(lambda p, x: neural_network.apply(p, x))
+# jitted_neural_network = jax.jit(lambda p, x: neural_network.apply(p, x, rngs={'dropout': key3}))
 
+
+t = np.linspace(0.0, 5.0, 501)
+z0 = np.array([1.0, 0.0])
 flat_nn_parameters, unravel_pytree = flatten_util.ravel_pytree(nn_parameters)
 epoch = 0
-
-z_ref = f_euler(z0, t, ode_parameters_ref)
-
+z_ref_0 = f_euler(z0, t, ode_parameters_ref)
 # Put all arguments the optimization needs into one array for the minimize function
-args = [t, z0, z_ref, ode_parameters_ref, unravel_pytree, epoch]
-
+args = [t, z0, z_ref_0, ode_parameters_ref, unravel_pytree, epoch, np.inf, None]
 # Optimisers: CG, BFGS, Newton-CG, L-BFGS-B, TNC, SLSQP, dogleg, trust-ncg, trust-krylov, trust-exact and trust-constr
-method = 'SLSQP'
+method = 'BFGS'
 res = minimize(function_wrapper, flat_nn_parameters, method=method, jac=True, args=args, options={'maxiter': 1000})
+nn_parameters = args[7]
 
-flat_nn_parameters = res['x']
-nn_parameters = unravel_pytree(flat_nn_parameters)
+t = np.linspace(5, 10.0, 501)
+z0_1 = np.array([z_ref_0[-1,0], z_ref_0[-1,1]])
+# z0_1 = z0
+flat_nn_parameters, unravel_pytree = flatten_util.ravel_pytree(nn_parameters)
+epoch = 0
+z_ref_1 = f_euler(z0_1, t, ode_parameters_ref)
+# Put all arguments the optimization needs into one array for the minimize function
+args = [t, z0_1, z_ref_1, ode_parameters_ref, unravel_pytree, epoch, np.inf, None]
+# Optimisers: CG, BFGS, Newton-CG, L-BFGS-B, TNC, SLSQP, dogleg, trust-ncg, trust-krylov, trust-exact and trust-constr
+method = 'BFGS'
+res = minimize(function_wrapper, flat_nn_parameters, method=method, jac=True, args=args, options={'maxiter': 1000})
+nn_parameters = args[7]
+
+# z_ref = np.concatenate(z_ref_0, z_ref_1)
 
 print(res)
 
+t = np.linspace(0.0, 10.0, 1001)
 z = hybrid_euler(z0, t, ode_parameters_ref, nn_parameters)
+z_ref = f_euler(z0, t, ode_parameters_ref)
 
 fig = plt.figure()
 x_ax, v_ax = fig.subplots(2,1)
