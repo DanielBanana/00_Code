@@ -63,7 +63,9 @@ def ode(z, t, ode_parameters):
     mu = ode_parameters[1]
     mass = ode_parameters[2]
     derivative = jnp.array([z[1],
-                           -kappa*z[0]/mass + (mu*(1-z[0]**2)*z[1])/mass])
+                           -kappa*z[0]/mass + (mu*(1-z[0]**2)*z[1])/mass,
+                           0,
+                           0])
     return derivative
 
 @jit
@@ -74,7 +76,10 @@ def hybrid_ode(z, t, ode_parameters, nn_parameters):
     mu = ode_parameters[1]
     mass = ode_parameters[2]
     derivative = jnp.array([jnp.array((z[1],)),
-                            jnp.array((-kappa*z[0]/mass,)) + jitted_neural_network(nn_parameters, z)]).flatten()
+                            jnp.array((-kappa*z[0]/mass,)) + jitted_neural_network(nn_parameters, z),
+                            [0],
+                            [0]]).flatten()
+
     return derivative
 
 @jit
@@ -83,6 +88,7 @@ def adjoint_f(adj, z, z_ref, t, ode_parameters, nn_parameters):
     df_dz = jax.jacobian(hybrid_ode, argnums=0)(z, t, ode_parameters, nn_parameters)
     dg_dz = jax.grad(g, argnums=0)(z, z_ref, ode_parameters, nn_parameters)
     d_adj = - df_dz.T @ adj - dg_dz
+    # d_adj = - df_dz @ adj - dg_dz
     return d_adj
 
 def g(z, z_ref, ode_parameters, nn_parameters):
@@ -98,8 +104,8 @@ def J(z, z_ref, ode_parameters, nn_parameters):
 
 def f_euler(z0, t, ode_parameters):
     '''Applies forward Euler to the original ODE and returns the trajectory'''
-    z = np.zeros((t.shape[0], 2))
-    z[0] = z0
+    z = np.zeros((t.shape[0], 4))
+    z[0,0:2] = z0
     for i in range(len(t)-1):
         dt = t[i+1] - t[i]
         z[i+1] = z[i] + dt * ode(z[i], t[i], ode_parameters)
@@ -107,8 +113,8 @@ def f_euler(z0, t, ode_parameters):
 
 def hybrid_euler(z0, t, ode_parameters, nn_parameters):
     '''Applies forward Euler to the hybrid ODE and returns the trajectory'''
-    z = np.zeros((t.shape[0], 2))
-    z[0] = z0
+    z = np.zeros((t.shape[0], 4))
+    z[0,0:2] = z0
     for i in range(len(t)-1):
         dt = t[i+1] - t[i]
         z[i+1] = z[i] + dt * hybrid_ode(z[i], t[i], ode_parameters, nn_parameters)
@@ -116,8 +122,11 @@ def hybrid_euler(z0, t, ode_parameters, nn_parameters):
 
 def adj_euler(a0, z, z_ref, t, ode_parameters, nn_parameters):
     '''Applies forward Euler to the adjoint ODE and returns the trajectory'''
-    a = np.zeros((t.shape[0], 2))
-    a[0] = a0
+    a = np.zeros((t.shape[0], 4))
+    # z_ = np.zeros((z.shape[0], 4))
+    # z_ref_ = np.zeros((z_ref.shape[0],4))
+
+    a[0,0:2] = a0
     times = []
     for i in range(len(t)-1):
         dt = t[i+1] - t[i]
@@ -204,7 +213,7 @@ def function_wrapper(nn_parameters, args):
     print(f'Epoch: {epoch}, Loss: {loss:.5f}, Time: {end-start:3.5f}')
 
     if np.abs(loss - old_loss) < 0.1:
-        flat_dJ_dtheta += np.random.normal(0, 10/epoch, flat_dJ_dtheta.shape)
+        flat_dJ_dtheta += np.random.normal(0, np.linalg.norm(flat_dJ_dtheta,2)*0.1, flat_dJ_dtheta.shape)
 
     epoch += 1
     args[5] = epoch
@@ -212,19 +221,19 @@ def function_wrapper(nn_parameters, args):
     return loss, flat_dJ_dtheta
 
 
-ode_parameters_ref = np.asarray([1.0, 5.0, 1.0])
+ode_parameters_ref = np.asarray([1.0, 8.53, 1.0])
 
-layers = [20, 20, 1]
+layers = [40, 1]
 #NN Parameters
 key1, key2, key3 = random.split(random.PRNGKey(0), 3)
 # Input size is guess from input during init
 neural_network = ExplicitMLP(features=layers)
-nn_parameters = neural_network.init(key2, np.zeros((1, 2)))
+nn_parameters = neural_network.init(key2, np.zeros((1, 4)))
 jitted_neural_network = jax.jit(lambda p, x: neural_network.apply(p, x))
 # jitted_neural_network = jax.jit(lambda p, x: neural_network.apply(p, x, rngs={'dropout': key3}))
 
 
-t = np.linspace(0.0, 5.0, 501)
+t = np.linspace(0.0, 10.0, 1001)
 z0 = np.array([1.0, 0.0])
 flat_nn_parameters, unravel_pytree = flatten_util.ravel_pytree(nn_parameters)
 epoch = 0
@@ -236,9 +245,22 @@ method = 'BFGS'
 res = minimize(function_wrapper, flat_nn_parameters, method=method, jac=True, args=args, options={'maxiter': 1000})
 nn_parameters = args[7]
 
-t = np.linspace(5, 10.0, 501)
+t = np.linspace(10, 20.0, 1001)
 z0_1 = np.array([z_ref_0[-1,0], z_ref_0[-1,1]])
 # z0_1 = z0
+flat_nn_parameters, unravel_pytree = flatten_util.ravel_pytree(nn_parameters)
+epoch = 0
+z_ref_1 = f_euler(z0_1, t, ode_parameters_ref)
+# Put all arguments the optimization needs into one array for the minimize function
+args = [t, z0_1, z_ref_1, ode_parameters_ref, unravel_pytree, epoch, np.inf, None]
+# Optimisers: CG, BFGS, Newton-CG, L-BFGS-B, TNC, SLSQP, dogleg, trust-ncg, trust-krylov, trust-exact and trust-constr
+method = 'BFGS'
+res = minimize(function_wrapper, flat_nn_parameters, method=method, jac=True, args=args, options={'maxiter': 1000})
+nn_parameters = args[7]
+
+t = np.linspace(0, 20.0, 2001)
+# z0_1 = np.array([z_ref_0[-1,0], z_ref_0[-1,1]])
+z0_1 = z0
 flat_nn_parameters, unravel_pytree = flatten_util.ravel_pytree(nn_parameters)
 epoch = 0
 z_ref_1 = f_euler(z0_1, t, ode_parameters_ref)
@@ -253,7 +275,7 @@ nn_parameters = args[7]
 
 print(res)
 
-t = np.linspace(0.0, 10.0, 1001)
+t = np.linspace(0.0, 20.0, 2001)
 z = hybrid_euler(z0, t, ode_parameters_ref, nn_parameters)
 z_ref = f_euler(z0, t, ode_parameters_ref)
 
