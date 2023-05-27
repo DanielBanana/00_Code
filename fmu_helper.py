@@ -66,22 +66,22 @@ class FMUEvaluator:
         # retrieve initial state x and
         # nominal values of x (if absolute tolerance is needed)
         # pointers to exchange state and derivative vectors with FMU
-        pointers = SimpleNamespace(
-            x=np.zeros(self.n_states),
-            dx=np.zeros(self.n_states),
-            z=np.zeros(self.n_events),
-        )
-        pointers._px = pointers.x.ctypes.data_as(
-            ctypes.POINTER(ctypes.c_double)
-        )
-        pointers._pdx = pointers.dx.ctypes.data_as(
-            ctypes.POINTER(ctypes.c_double)
-        )
-        pointers._pz = pointers.z.ctypes.data_as(
-            ctypes.POINTER(ctypes.c_double)
-        )
-        status = self.fmu.getContinuousStates(pointers._px, pointers.x.size)
-        self.pointers = pointers
+        # pointers = SimpleNamespace(
+        #     x=np.zeros(self.n_states),
+        #     dx=np.zeros(self.n_states),
+        #     z=np.zeros(self.n_events),
+        # )
+        # pointers._px = pointers.x.ctypes.data_as(
+        #     ctypes.POINTER(ctypes.c_double)
+        # )
+        # pointers._pdx = pointers.dx.ctypes.data_as(
+        #     ctypes.POINTER(ctypes.c_double)
+        # )
+        # pointers._pz = pointers.z.ctypes.data_as(
+        #     ctypes.POINTER(ctypes.c_double)
+        # )
+        # status = self.fmu.getContinuousStates(pointers._px, pointers.x.size)
+        # self.pointers = pointers
 
         # collect the value references
         vrs = {}
@@ -126,28 +126,28 @@ class FMUEvaluator:
 
         self.fmu.exitInitializationMode()
 
-        # retrieve initial state x and
-        # nominal values of x (if absolute tolerance is needed)
-        # pointers to exchange state and derivative vectors with FMU
-        pointers = SimpleNamespace(
-            x=np.zeros(self.n_states),
-            dx=np.zeros(self.n_states),
-            z=np.zeros(self.n_events),
-        )
-        pointers._px = pointers.x.ctypes.data_as(
-            ctypes.POINTER(ctypes.c_double)
-        )
-        pointers._pdx = pointers.dx.ctypes.data_as(
-            ctypes.POINTER(ctypes.c_double)
-        )
-        pointers._pz = pointers.z.ctypes.data_as(
-            ctypes.POINTER(ctypes.c_double)
-        )
-        self.pointers = pointers
+        # # retrieve initial state x and
+        # # nominal values of x (if absolute tolerance is needed)
+        # # pointers to exchange state and derivative vectors with FMU
+        # pointers = SimpleNamespace(
+        #     x=np.zeros(self.n_states),
+        #     dx=np.zeros(self.n_states),
+        #     z=np.zeros(self.n_events),
+        # )
+        # pointers._px = pointers.x.ctypes.data_as(
+        #     ctypes.POINTER(ctypes.c_double)
+        # )
+        # pointers._pdx = pointers.dx.ctypes.data_as(
+        #     ctypes.POINTER(ctypes.c_double)
+        # )
+        # pointers._pz = pointers.z.ctypes.data_as(
+        #     ctypes.POINTER(ctypes.c_double)
+        # )
+        # self.pointers = pointers
 
         self.fmu.enterContinuousTimeMode()
 
-    def evaluate_fmu(self, t, dt, augment_model_function, augment_model_args):
+    def evaluate_fmu(self, t, dt, augment_model_function, augment_model_args, pointers):
         """Evaluation function of the FMU. Uses the internally stored FMU and a
         augment model function to calculate the derivatives for the
         calculation of the new state. Arguments for the function
@@ -176,22 +176,22 @@ class FMUEvaluator:
         status = self.fmu.setTime(t)
 
         if self.training:
-            control = augment_model_function(augment_model_args, self.pointers.x)
+            control = augment_model_function(augment_model_args, pointers.x)
             self.fmu.setReal(self.vr_input, [control])
-            status = self.fmu.getDerivatives(self.pointers._pdx, self.pointers.dx.size)
+            status = self.fmu.getDerivatives(pointers._pdx, pointers.dx.size)
             dfmu_dz_at_t = self.dfmu_dz_function()
             dfmu_dinput_at_t = self.dfmu_dinput_function()
         else:
-            control = augment_model_function(augment_model_args, self.pointers.x)
+            control = augment_model_function(augment_model_args, pointers.x)
             self.fmu.setReal(self.vr_input, [control])
-            status = self.fmu.getDerivatives(self.pointers._pdx, self.pointers.dx.size)
+            status = self.fmu.getDerivatives(pointers._pdx, pointers.dx.size)
 
-        self.pointers.x += dt * self.pointers.dx
+        pointers.x += dt * pointers.dx
 
-        status = self.fmu.setContinuousStates(self.pointers._px, self.pointers.x.size)
+        status = self.fmu.setContinuousStates(pointers._px, pointers.x.size)
 
         # get event indicators at t = time
-        status = self.fmu.getEventIndicators(self.pointers._pz, self.pointers.z.size)
+        status = self.fmu.getEventIndicators(pointers._pz, pointers.z.size)
 
         # inform the model about an accepted step
         enterEventMode, terminateSimulation = self.fmu.completedIntegratorStep()
@@ -202,9 +202,9 @@ class FMUEvaluator:
         # If we are in Training mode return the derivatives for the next step,
         # FMU information and Optimisation jacobians; otherwise leave out jacobians
         if self.training:
-            return self.pointers.dx, enterEventMode, terminateSimulation, dfmu_dz_at_t, dfmu_dinput_at_t
+            return pointers, enterEventMode, terminateSimulation, dfmu_dz_at_t, dfmu_dinput_at_t
         else:
-            return self.pointers.dx, enterEventMode, terminateSimulation
+            return pointers, enterEventMode, terminateSimulation
 
     def dfmu_dz_function(self):
         """Calculate the jacobian of the fmu function w.r.t. the state variables
@@ -253,7 +253,7 @@ class FMUEvaluator:
         """
         return self.fmu.getDirectionalDerivative(self.vr_derivatives, self.vr_input, [1.0])
 
-    def setup_initial_state(self, z0):
+    def setup_initial_state(self, z0, pointers):
         """Before starting the iteration of the ODE solver set the inital state in the
         FMU and load the pointers with the correct values
 
@@ -263,6 +263,25 @@ class FMUEvaluator:
             _description_
         """
         self.fmu.setReal(self.vr_states, z0)
-        self.fmu.getContinuousStates(self.pointers._px, self.pointers.x.size)
+        self.fmu.getContinuousStates(pointers._px, pointers.x.size)
 
 
+    def get_pointers(self):
+        # retrieve initial state x and
+        # nominal values of x (if absolute tolerance is needed)
+        # pointers to exchange state and derivative vectors with FMU
+        pointers = SimpleNamespace(
+            x=np.zeros(self.n_states),
+            dx=np.zeros(self.n_states),
+            z=np.zeros(self.n_events),
+        )
+        pointers._px = pointers.x.ctypes.data_as(
+            ctypes.POINTER(ctypes.c_double)
+        )
+        pointers._pdx = pointers.dx.ctypes.data_as(
+            ctypes.POINTER(ctypes.c_double)
+        )
+        pointers._pz = pointers.z.ctypes.data_as(
+            ctypes.POINTER(ctypes.c_double)
+        )
+        return pointers
