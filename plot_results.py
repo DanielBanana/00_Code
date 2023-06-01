@@ -1,7 +1,7 @@
 from matplotlib import pyplot as plt
 import os
 
-def get_plot_path(path):
+def get_file_path(path):
     directory_of_this_file = '/'.join(path.split('/')[:-1])
     file_name_no_ext = os.path.basename(path).split('/')[-1].split('.')[0]
     plot_path = os.path.join(directory_of_this_file, file_name_no_ext)
@@ -20,5 +20,21 @@ def plot_results(t, z, z_ref, path):
     v_ax.legend()
     fig.tight_layout()
     fig.savefig(f'{path}.png')
-    plt.show()
+    plt.close()
+
+def plot_losses(epochs, training_losses, validation_losses=None, path=None):
+    fig = plt.figure()
+    ax = fig.subplots()
+    ax.set_title('Loss')
+    ax.plot(epochs, training_losses, label='Training')
+    if validation_losses is not None:
+        ax.plot(epochs, validation_losses, label='Validation')
+        ax.legend()
+    fig.tight_layout()
+    if path is not None:
+        fig.savefig(f'{path}.png')
+    else:
+        fig.savefig()
+    plt.close()
+
 
