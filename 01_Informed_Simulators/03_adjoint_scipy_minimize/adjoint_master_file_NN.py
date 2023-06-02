@@ -13,6 +13,8 @@ from typing import Sequence
 import sys
 import time
 import argparse
+from functools import partial
+from jax import lax
 
 # To use the plot_results file we need to add the uppermost folder to the PYTHONPATH
 # Only Works if file gets called from 00_Code
@@ -49,6 +51,7 @@ def ode(z, t, ode_parameters):
                            -kappa*z[0]/mass + (mu*(1-z[0]**2)*z[1])/mass])
     return derivative
 
+@jit
 def ode_res(z, t, ode_parameters):
     '''Calculates the right hand side of the deficient ODE.'''
     kappa = ode_parameters[0]
@@ -77,6 +80,16 @@ def ode_stim(z, t, ode_parameters):
     mass = ode_parameters[2]
     derivative = jnp.array([z[1],
                            -kappa*z[0]/mass + (mu*(1-z[0]**2)*z[1])/mass + 1.2*jnp.cos(0.628*t)])
+    return derivative
+
+@jit
+def ode_stim_res(z, t, ode_parameters):
+    '''Calculates the right hand side of the original ODE.'''
+    kappa = ode_parameters[0]
+    mu = ode_parameters[1]
+    mass = ode_parameters[2]
+    derivative = jnp.array([z[1],
+                           -kappa*z[0]/mass + 1.2*jnp.cos(0.628*t)])
     return derivative
 
 @jit
@@ -152,10 +165,12 @@ def g(z, z_ref, ode_parameters, nn_parameters):
     and z_ref or whole numpy arrays'''
     return jnp.mean(0.5 * (z_ref - z)**2, axis = 0)
 
+@jit
 def J(z, z_ref, ode_parameters, nn_parameters):
     '''Calculates the complete loss of a trajectory w.r.t. a reference trajectory'''
-    return np.mean(g(z, z_ref, ode_parameters, nn_parameters))
+    return jnp.mean(g(z, z_ref, ode_parameters, nn_parameters))
 
+@jit
 def J_residual(inputs, outputs, nn_parameters):
     def squared_error(input, output):
         pred = jitted_neural_network(nn_parameters, input)
@@ -168,42 +183,82 @@ def create_residuals(z_ref, t, ode_parameters):
     residual = z_dot - v_ode(z_ref[:-1], t[:-1], ode_parameters)
     return residual
 
+# @jit
+# def euler_step(z, t, i, ode_parameters):
+#     dt = t[i+1] - t[i]
+#     return z[i] + dt * ode(z[i], t[i], ode_parameters)
+
 def f_euler(z0, t, ode_parameters):
     '''Applies forward Euler to the original ODE and returns the trajectory'''
-    z = np.zeros((t.shape[0], z0.shape[0]))
-    z[0] = z0
-    for i in range(len(t)-1):
-        dt = t[i+1] - t[i]
-        z[i+1] = z[i] + dt * ode(z[i], t[i], ode_parameters)
+    z = jnp.zeros((t.shape[0], z0.shape[0]))
+    z = z.at[0].set(z0)
+    i = jnp.asarray(range(t.shape[0]))
+    euler_body_func = partial(f_step, t=t, ode_parameters = ode_parameters)
+    final, result = lax.scan(euler_body_func, z0, i)
+    z = z.at[1:].set(result[:-1])
+    # z[1:] = result[:-1]
+
+    # for i in range(len(t)-1):
+    #     dt = t[i+1] - t[i]
+    #     z[i+1] = z[i] + dt * ode(z[i], t[i], ode_parameters)
+    #     # z[i+1] = euler_step(z, t, i, ode_parameters)
     return z
+
+def f_step(prev_z, i, t, ode_parameters):
+    t = jnp.asarray(t)
+    dt = t[i+1] - t[i]
+    next_z = prev_z + dt * ode(prev_z, t[i], ode_parameters)
+    return next_z, next_z
 
 def hybrid_euler(z0, t, ode_parameters, nn_parameters):
     '''Applies forward Euler to the hybrid ODE and returns the trajectory'''
-    z = np.zeros((t.shape[0], z0.shape[0]))
-    z[0] = z0
-    for i in range(len(t)-1):
-        dt = t[i+1] - t[i]
-        z[i+1] = z[i] + dt * hybrid_ode(z[i], t[i], ode_parameters, nn_parameters)
+    z = jnp.zeros((t.shape[0], z0.shape[0]))
+    z = z.at[0].set(z0)
+    i = jnp.asarray(range(t.shape[0]))
+    # We can replace the loop over the time by a lax.scan this is 3 times as fast: 0.32-0.26 -> 0.11-0.9
+    euler_body_func = partial(hybrid_step, t=t, ode_parameters=ode_parameters, nn_parameters=nn_parameters)
+    final, result = lax.scan(euler_body_func, z0, i)
+    z = z.at[1:].set(result[:-1])
+    # for i in range(len(t)-1):
+    #     dt = t[i+1] - t[i]
+    #     z[i+1] = z[i] + dt * hybrid_ode(z[i], t[i], ode_parameters, nn_parameters)
     return z
+
+def hybrid_step(prev_z, i, t, ode_parameters, nn_parameters):
+    t = jnp.asarray(t)
+    dt = t[i+1] - t[i]
+    next_z = prev_z + dt * hybrid_ode(prev_z, t[i], ode_parameters, nn_parameters)
+    return next_z, next_z
 
 def adj_euler(a0, z, z_ref, t, ode_parameters, nn_parameters):
     '''Applies forward Euler to the adjoint ODE and returns the trajectory'''
-    a = np.zeros((t.shape[0], a0.shape[0]))
-    # z_ = np.zeros((z.shape[0], 4))
-    # z_ref_ = np.zeros((z_ref.shape[0],4))
+    a = jnp.zeros((t.shape[0], a0.shape[0]))
+    a = a.at[0].set(a0)
+    i = jnp.asarray(range(t.shape[0]))
+    # We can replace the loop over the time by a lax.scan this is 3 times as fast: 0.32-0.26 -> 0.11-0.9
+    euler_body_func = partial(adjoint_step, z=z, z_ref=z_ref, t=t, ode_parameters=ode_parameters,nn_parameters=nn_parameters)
+    final, result = lax.scan(euler_body_func, a0, i)
+    a = a.at[1:].set(result[:-1])
 
-    a[0] = a0
-    times = []
-    for i in range(len(t)-1):
-        dt = t[i+1] - t[i]
-        d_adj = adjoint_f(a[i], z[i], z_ref[i], t[i], ode_parameters, nn_parameters)
-        a[i+1] = a[i] + dt * d_adj
+    # for i in range(len(t)-1):
+    #     dt = t[i+1] - t[i]
+    #     d_adj = adjoint_f(a[i], z[i], z_ref[i], t[i], ode_parameters, nn_parameters)
+    #     a[i+1] = a[i] + dt * d_adj
     return a
+
+def adjoint_step(prev_a, i, z, z_ref, t, ode_parameters, nn_parameters):
+    t = jnp.asarray(t)
+    z = jnp.asarray(z)
+    z_ref = jnp.asarray(z_ref)
+    dt = t[i+1]-t[i]
+    next_a = prev_a + dt * adjoint_f(prev_a, z[i], z_ref[i], t[i], ode_parameters, nn_parameters)
+    return next_a, next_a
 
 
 # Based on https://www.mathworks.com/help/deeplearning/ug/dynamical-system-modeling-using-neural-ode.html#TrainNeuralODENetworkWithRungeKuttaODESolverExample-14
-def create_mini_batch(n_timesteps, n_times_per_obs, mini_batch_size, X, adjoint, t):
+def create_mini_batch(n_times_per_obs, mini_batch_size, X, adjoint, t):
 
+    n_timesteps = t.shape[0]
     # Create batches of trajectories
     if n_timesteps-n_times_per_obs == 0:
         s = np.array([0])
@@ -248,9 +303,9 @@ vectorized_dg_dtheta_function = jit(jax.vmap(dg_dtheta_function, in_axes=(0, 0, 
 
 # The Neural Network structure class
 class ExplicitMLP(nn.Module):
-  features: Sequence[int]
-  def setup(self):
-    self.layers = [nn.Dense(feat, kernel_init=nn.initializers.normal(0.1), bias_init=nn.initializers.normal(0.1)) for feat in self.features]
+    features: Sequence[int]
+    def setup(self):
+        self.layers = [nn.Dense(feat, kernel_init=nn.initializers.normal(0.1), bias_init=nn.initializers.normal(0.1)) for feat in self.features]
 
     # layers = []
     # for feat in self.features:
@@ -258,16 +313,16 @@ class ExplicitMLP(nn.Module):
     #     layers.append(nn.Dropout(0.2))
     # self.layers = layers
 
-  def __call__(self, inputs):
-    x = inputs
-    for i, lyr in enumerate(self.layers):
-      x = lyr(x)
-      if i != len(self.layers) - 1:
-        x = nn.silu(x)
-    return x
+    def __call__(self, inputs):
+        x = inputs
+        for i, lyr in enumerate(self.layers):
+            x = lyr(x)
+            if i != len(self.layers) - 1:
+                x = nn.silu(x)
+        return x
 
 def create_nn(layers, z0):
-    key1, key2, = random.split(random.PRNGKey(np.random.randint(0,1)), 2)
+    key1, key2, = random.split(random.PRNGKey(np.random.randint(0,100)), 2)
     neural_network = ExplicitMLP(features=layers)
     nn_parameters = neural_network.init(key2, np.zeros((1, z0.shape[0])))
     jitted_neural_network = jax.jit(lambda p, x: neural_network.apply(p, x))
@@ -356,14 +411,14 @@ def function_wrapper(flat_nn_parameters, optimizer_args):
     nn_parameters = unravel_pytree(flat_nn_parameters)
 
     z = hybrid_euler(z0, t, ode_parameters, nn_parameters) # 0.01-0.06s
-    z = np.nan_to_num(z, nan=0.0)
+    z = np.nan_to_num(z, nan=1e8)
     a0 = np.zeros(z0.shape)
     # df_dtheta_trajectory = vectorized_df_dtheta_function(z, t, ode_parameters, nn_parameters)
     adjoint = adj_euler(a0, np.flip(z, axis=0), np.flip(z_ref, axis=0), np.flip(t), ode_parameters, nn_parameters)
     adjoint = np.flip(adjoint, axis=0)
 
     if batching:
-        z0s, targets, a0s, adjoints, ts = create_mini_batch(t.shape[0], 40, 200, z_ref, adjoint)
+        z0s, targets, a0s, adjoints, ts = create_mini_batch(40, 200, z_ref, adjoint, t)
         zs, loss = model_loss(z0s, ts, ode_parameters, nn_parameters, targets)
         gradients = []
         for z_, adjoint_, t_ in zip(zs, adjoints, ts):
@@ -420,7 +475,7 @@ def function_wrapper(flat_nn_parameters, optimizer_args):
     end = time.time()
 
     print(f'Epoch: {epoch}, Loss: {loss:.7f}, Time: {end-start:3.3f}')
-    return loss, flat_dJ_dtheta/t.shape[0]
+    return loss, flat_dJ_dtheta/(t.shape[0])
 
 
 if __name__ == '__main__':
@@ -430,8 +485,8 @@ if __name__ == '__main__':
     parser.add_argument('--end', type=float, default=20.0, help='End value of the ODE integration')
     parser.add_argument('--nsteps', type=float, default=4001, help='How many integration steps to perform')
 
-    parser.add_argument('--layers', type=int, default=3, help='Number of hidden layers')
-    parser.add_argument('--layer_size', type=int, default=25, help='Number of neurons in a hidden layer')
+    parser.add_argument('--layers', type=int, default=4, help='Number of hidden layers')
+    parser.add_argument('--layer_size', type=int, default=20, help='Number of neurons in a hidden layer')
 
     parser.add_argument('--aug_state', type=bool, default=False, help='Whether or not to use the augemented state for the ODE dynamics')
     parser.add_argument('--aug_dim', type=int, default=4, help='Number of augment dimensions')
@@ -444,8 +499,9 @@ if __name__ == '__main__':
     parser.add_argument('--simple_problem', type=bool, default=False, help='Whether or not to use a simple damped oscillator instead of VdP')
 
     parser.add_argument('--method', type=str, default='BFGS', help='Which optimisation method to use')
-    parser.add_argument('--tol', type=float, default=1e-10, help='Tolerance for the optimisation method')
+    parser.add_argument('--tol', type=float, default=1e-12, help='Tolerance for the optimisation method')
     parser.add_argument('--transfer_learning', type=bool, default=True, help='Tolerance for the optimisation method')
+    parser.add_argument('--res_steps', type=float, default=500, help='Number of steps for the Pretraining on the Residuals')
 
     parser.add_argument('--build_plot', required=False, default=True, action='store_true',
                         help='specify to build loss and accuracy plot')
@@ -453,7 +509,7 @@ if __name__ == '__main__':
                         help='name under which the results should be saved, like plots and such')
     parser.add_argument('--checkpoint_interval', required=False, type=int, default=100,
                         help='path to save the resulting plot')
-    parser.add_argument('--restore', required=False, type=float, default=True,
+    parser.add_argument('--restore', required=False, type=float, default=False,
                         help='restore previous parameters')
 
     parser.add_argument('--eval_freq', type=int, default=100, help='evaluate test accuracy every EVAL_FREQ '
@@ -492,6 +548,7 @@ if __name__ == '__main__':
     elif args.stimulate:
         ode = ode_stim
         hybrid_ode = hybrid_ode_stim
+        ode_res = ode_stim_res
         z0 = np.array([1.0, 0.0])
     elif args.simple_problem:
         ode = ode_simple
@@ -542,7 +599,7 @@ if __name__ == '__main__':
     ####################################################################################
     # Optimisers: CG, BFGS, Newton-CG, L-BFGS-B, TNC, SLSQP, dogleg, trust-ncg, trust-krylov, trust-exact and trust-constr
     if args.transfer_learning:
-        residual_result = minimize(residual_wrapper, flat_nn_parameters, method=args.method, jac=True, args=optimizer_args, options={'maxiter':1000})
+        residual_result = minimize(residual_wrapper, flat_nn_parameters, method=args.method, jac=True, args=optimizer_args, options={'maxiter':args.res_steps})
         nn_parameters = optimizer_args['saved_nn_parameters']
         best_loss = optimizer_args['best_loss']
         print(f'Best Loss in Residual Training: {best_loss}')
@@ -558,6 +615,7 @@ if __name__ == '__main__':
     ####################################################################################
     optimizer_args['results_path'] = result_path
     try:
+
         res = minimize(function_wrapper, flat_nn_parameters, method='BFGS', jac=True, args=optimizer_args, tol=args.tol)
         print(res)
     except KeyboardInterrupt:
