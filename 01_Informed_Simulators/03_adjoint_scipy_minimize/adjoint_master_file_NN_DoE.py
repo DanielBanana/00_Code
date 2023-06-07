@@ -18,6 +18,15 @@ from functools import partial
 from jax import lax
 from pyDOE2 import fullfact, bbdesign
 import warnings
+import shutil
+from collections import OrderedDict
+import yaml
+warnings.filterwarnings("error")
+# from adjoint_master_file_NN import ode, ode_res, ode_aug, ode_simple, ode_stim, ode_stim_res
+# from adjoint_master_file_NN import f_euler
+# # from adjoint_master_file_NN import f_step, adjoint_step
+# from adjoint_master_file_NN import g, J, create_residuals, create_mini_batch, create_clean_mini_batch, model_loss
+# from adjoint_master_file_NN import residual_wrapper, function_wrapper
 
 # To use the plot_results file we need to add the uppermost folder to the PYTHONPATH
 # Only Works if file gets called from 00_Code
@@ -162,7 +171,6 @@ def adjoint_f(adj, z, z_ref, t, ode_parameters, nn_parameters):
     # return d_adj, cond
     return d_adj
 
-
 def g(z, z_ref, ode_parameters, nn_parameters):
     '''Calculates the inner part of the loss function.
 
@@ -235,16 +243,24 @@ def hybrid_step(prev_z, i, t, ode_parameters, nn_parameters):
     next_z = prev_z + dt * hybrid_ode(prev_z, t[i], ode_parameters, nn_parameters)
     return next_z, next_z
 
-def adj_euler(a0, z, z_ref, t, ode_parameters, nn_parameters):
+def adjoint_euler(a0, z, z_ref, t, ode_parameters, nn_parameters):
     '''Applies forward Euler to the adjoint ODE and returns the trajectory'''
     a = jnp.zeros((t.shape[0], a0.shape[0]))
     a = a.at[0].set(a0)
     i = jnp.asarray(range(t.shape[0]))
+
+    def adjoint_step(prev_a, i, z, z_ref, t, ode_parameters, nn_parameters):
+        t = jnp.asarray(t)
+        z = jnp.asarray(z)
+        z_ref = jnp.asarray(z_ref)
+        dt = t[i+1]-t[i]
+        next_a = prev_a + dt * adjoint_f(prev_a, z[i], z_ref[i], t[i], ode_parameters, nn_parameters)
+        return next_a, next_a
+
     # We can replace the loop over the time by a lax.scan this is 3 times as fast: 0.32-0.26 -> 0.11-0.9
     euler_body_func = partial(adjoint_step, z=z, z_ref=z_ref, t=t, ode_parameters=ode_parameters,nn_parameters=nn_parameters)
     final, result = lax.scan(euler_body_func, a0, i)
     a = a.at[1:].set(result[:-1])
-
 
     # a = np.zeros((t.shape[0], a0.shape[0]))
     # a[0] = a0
@@ -256,14 +272,6 @@ def adj_euler(a0, z, z_ref, t, ode_parameters, nn_parameters):
     #     a[i+1] = a[i] + dt * d_adj
 
     return a
-
-def adjoint_step(prev_a, i, z, z_ref, t, ode_parameters, nn_parameters):
-    t = jnp.asarray(t)
-    z = jnp.asarray(z)
-    z_ref = jnp.asarray(z_ref)
-    dt = t[i+1]-t[i]
-    next_a = prev_a + dt * adjoint_f(prev_a, z[i], z_ref[i], t[i], ode_parameters, nn_parameters)
-    return next_a, next_a
 
 
 # Based on https://www.mathworks.com/help/deeplearning/ug/dynamical-system-modeling-using-neural-ode.html#TrainNeuralODENetworkWithRungeKuttaODESolverExample-14
@@ -286,35 +294,33 @@ def create_mini_batch(n_times_per_obs, mini_batch_size, X, adjoint, t):
         ts.append(t[s[i]:s[i]+n_times_per_obs])
     return x0, targets, a0, adjoints, ts
 
-def create_clean_mini_batch(n_mini_batches, X, adjoint, t):
+def create_clean_mini_batch(n_mini_batches, x_ref, t):
     n_timesteps = t.shape[0]
     # Create batches of trajectories
     mini_batch_size = int(n_timesteps/n_mini_batches)
     s = [mini_batch_size * i for i in range(n_mini_batches)]
-    batch_ends = [mini_batch_size * (i+1) - 1 for i in range(n_mini_batches)]
+    x0 = x_ref[s, :]
+    targets = [x_ref[s[i]:s[i]+mini_batch_size] for i in range(n_mini_batches)]
+    ts = [t[s[i]:s[i]+mini_batch_size] for i in range(n_mini_batches)]
+    return x0, targets, ts
 
-    x0 = X[s, :]
-    a0 = adjoint[s, :]
-    targets = np.empty((n_mini_batches, mini_batch_size, X.shape[1]))
-    adjoints = np.empty((n_mini_batches, mini_batch_size, adjoint.shape[1]))
-    ts = []
-    for i in range(n_mini_batches):
-        targets[i, 0:mini_batch_size, :] = X[s[i] + 0:(s[i] + mini_batch_size), :]
-        adjoints[i, 0:mini_batch_size, :] = adjoint[s[i] + 0:(s[i] + mini_batch_size), :]
-        ts.append(t[s[i]:s[i]+mini_batch_size])
-    return x0, targets, a0, adjoints, ts
-
-
-def model_loss(z0, ts, ode_parameters, nn_parameters, targets):
+def model_loss(z0s, ts, ode_parameters, nn_parameters, targets):
     zs = []
+    adjoints = []
     losses = []
     # Compute Predictions
-    for i, ic in enumerate(z0):
-        z = hybrid_euler(ic, ts[i], ode_parameters, nn_parameters)
-        losses.append(J(z, targets[i], ode_parameters, nn_parameters))
+    a0 = np.zeros(z0s[0].shape)
+    for i, ic in enumerate(z0s):
+        t = ts[i]
+        z_ref = targets[i]
+        z = hybrid_euler(ic, t, ode_parameters, nn_parameters)
+        losses.append(J(z, z_ref, ode_parameters, nn_parameters))
         zs.append(z)
-
-    return zs, np.asarray(losses).mean()
+        # df_dtheta_trajectory = vectorized_df_dtheta_function(z, t, ode_parameters, nn_parameters)
+        adjoint = adjoint_euler(a0, np.flip(z, axis=0), np.flip(z_ref, axis=0), np.flip(t), ode_parameters, nn_parameters)
+        adjoint = np.flip(adjoint, axis=0)
+        adjoints.append(adjoint)
+    return zs, adjoints, np.asarray(losses).mean()
 
 # Vectorize the  jacobian df_dtheta for all time points
 df_dtheta_function = lambda z, t, phi, theta: jax.jacobian(hybrid_ode, argnums=3)(z, t, phi, theta)
@@ -363,7 +369,7 @@ def residual_wrapper(flat_nn_parameters, optimizer_args):
     t = optimizer_args['time']
     z0 = optimizer_args['initial_condition']
     z_ref = optimizer_args['reference_solution']
-    z_val = optimizer_args['validation_solution']
+    z_ref_val = optimizer_args['validation_solution']
     ode_parameters = optimizer_args['reference_ode_parameters']
     unravel_pytree = optimizer_args['unravel_function']
     epoch = optimizer_args['epoch']
@@ -371,48 +377,61 @@ def residual_wrapper(flat_nn_parameters, optimizer_args):
     batching = optimizer_args['batching']
     random_shift = optimizer_args['random_shift']
     checkpoint_interval = optimizer_args['checkpoint_interval']
-    results_path = optimizer_args['results_path']
+    results_directory = optimizer_args['results_directory']
     best_loss = optimizer_args['best_loss']
     checkpoint_manager = optimizer_args['checkpoint_manager']
     lambda_ = optimizer_args['lambda']
-
+    loss_cutoff = optimizer_args['loss_cutoff']
 
     # Get the parameters of the neural network out of the array structure into the
     # tree structure
     nn_parameters = unravel_pytree(flat_nn_parameters)
-    # Save best parameters
 
     # in this case we only want the second part since the first part is completly known
     # and the neural network only works on the second part
     outputs = create_residuals(z_ref, t, ode_parameters)[:,1]
     inputs = z_ref[:-1]
 
-    z = hybrid_euler(z0, t, ode_parameters, nn_parameters)
-
-    # loss = J_residual(inputs, outputs, nn_parameters)
-    res_loss = J_residual(inputs, outputs, nn_parameters)
+    # Calculate the loss and gradient over the Residuals
     res_loss, gradient = jax.value_and_grad(J_residual, argnums=2)(inputs, outputs, nn_parameters)
-    true_loss = J(z, z_ref, ode_parameters, nn_parameters)
     flat_gradient, _ = flatten_util.ravel_pytree(gradient)
-    optimizer_args['epoch'] += 1
-    optimizer_args['losses'].append(true_loss)
-    if epoch > 0 and true_loss < best_loss:
+
+    # Calculate the Loss over the trajectory for the training and validation data
+    z = hybrid_euler(z0, t, ode_parameters, nn_parameters)
+    loss = J(z, z_ref, ode_parameters, nn_parameters)
+    z_val = hybrid_euler(z_ref[-1], t_val, ode_parameters, nn_parameters)
+    val_loss = J(z_val, z_ref_val, ode_parameters, nn_parameters)
+
+    # Plot the results in regular intervals
+    if epoch % checkpoint_interval == 0:
+        # Due to batching the length of z can change
+        plot_results(t[:z.shape[0]], z, z_ref[:z.shape[0]], os.path.join(results_directory,f'epoch_{epoch}'))
+        plot_results(t_val, z_val, z_ref_val, os.path.join(results_directory,f'val_epoch_{epoch}'))
+
+    # Save the best parameters measured on the validation data
+    if epoch > 0 and val_loss < best_loss:
         optimizer_args['saved_nn_parameters'] = nn_parameters
-        optimizer_args['best_loss'] = true_loss
+        optimizer_args['best_loss'] = val_loss
         save_args = orbax_utils.save_args_from_target(nn_parameters)
         checkpoint_manager.save(epoch, nn_parameters, save_kwargs={'save_args': save_args})
 
-    if epoch % checkpoint_interval == 0:
-        plot_results(t, z, z_ref, results_path+f'_epoch_{epoch}')
-        # optimizer_args['saved_nn_parameters'] = nn_parameters
+    # Regularise the optimizer with a punishment on the nn_parameters (bigger parameter values
+    # equals more a higher loss punishment)
+    if lambda_ == 0.0:
+        L2_regularisation = 0.0
+    else:
+        L2_regularisation = lambda_/(2*(t.shape[0])) * np.linalg.norm(flat_nn_parameters, 2)**2
 
-
+    optimizer_args['epoch'] += 1
+    optimizer_args['losses'].append(loss)
+    optimizer_args['val_losses'].append(val_loss)
     end = time.time()
+    print(f'Pretraining: Epoch: {epoch}, Residual Loss: {res_loss:.5E}, Loss: {loss:.5E}, Validation Loss: {val_loss:.5E} Time: {end-start:3.3f}')
 
-    # L2_regularisation = lambda_/(2*(t.shape[0])) * np.linalg.norm(flat_nn_parameters, 2)**2
-    L2_regularisation = 0.0
+    # If the loss on the validation trajectory passes a lower bound the result is good enough
+    if val_loss < loss_cutoff:
+        warnings.warn('Terminating Optimization: Required Loss reached')
 
-    print(f'Pretraining: Epoch: {epoch}, Residual Loss: {res_loss:.10f}, True Loss: {true_loss:.10f}, Time: {end-start:3.3f}')
     return res_loss + L2_regularisation, flat_gradient
 
 def function_wrapper(flat_nn_parameters, optimizer_args):
@@ -432,35 +451,33 @@ def function_wrapper(flat_nn_parameters, optimizer_args):
     epoch = optimizer_args['epoch']
     losses = optimizer_args['losses']
     batching = optimizer_args['batching']
+    n_batches = optimizer_args['n_batches']
+    batch_size = optimizer_args['batch_size']
+    clean_batching = optimizer_args['clean_batching']
+    n_clean_batches = optimizer_args['n_clean_batches']
     random_shift = optimizer_args['random_shift']
     checkpoint_interval = optimizer_args['checkpoint_interval']
-    results_path = optimizer_args['results_path']
+    results_directory = optimizer_args['results_directory']
     best_loss = optimizer_args['best_loss']
     checkpoint_manager = optimizer_args['checkpoint_manager']
     lambda_ = optimizer_args['lambda']
+    clean_batching = optimizer_args['clean_batching']
+    loss_cutoff = optimizer_args['loss_cutoff']
 
     # Get the parameters of the neural network out of the array structure into the
     # tree structure
     nn_parameters = unravel_pytree(flat_nn_parameters)
 
-    z = hybrid_euler(z0, t, ode_parameters, nn_parameters) # 0.01-0.06s
-    # z = np.nan_to_num(z, nan=1e8)
-    a0 = np.zeros(z0.shape)
-    # df_dtheta_trajectory = vectorized_df_dtheta_function(z, t, ode_parameters, nn_parameters)
-    adjoint = adj_euler(a0, np.flip(z, axis=0), np.flip(z_ref, axis=0), np.flip(t), ode_parameters, nn_parameters)
-    adjoint = np.flip(adjoint, axis=0)
-
     if batching:
-        if True:
-            z0s, targets, a0s, adjoints, ts = create_clean_mini_batch(5, z_ref, adjoint, t)
+        if clean_batching:
+            z0s, targets, ts = create_clean_mini_batch(n_clean_batches, z_ref, t)
         else:
-            z0s, targets, a0s, adjoints, ts = create_mini_batch(40, 200, z_ref, adjoint, t)
-        zs, loss = model_loss(z0s, ts, ode_parameters, nn_parameters, targets)
+            z0s, targets, a0s, adjoints, ts = create_mini_batch(n_batches, batch_size, z_ref, adjoint, t)
+        zs, adjoints, loss = model_loss(z0s, ts, ode_parameters, nn_parameters, targets)
         gradients = []
         for z_, adjoint_, t_ in zip(zs, adjoints, ts):
             # Calculate the gradient of the hybrid ode with respect to the nn_parameters
             df_dtheta_trajectory = vectorized_df_dtheta_function(z_, t_, ode_parameters, nn_parameters)
-            # For loop probably not the fastest; Pytree probably better
             # Matrix multiplication of adjoint variable with jacobian
             df_dtheta_trajectory = unfreeze(df_dtheta_trajectory)
             for layer in df_dtheta_trajectory['params']:
@@ -472,11 +489,16 @@ def function_wrapper(flat_nn_parameters, optimizer_args):
             flat_dJ_dtheta, _ = flatten_util.ravel_pytree(dJ_dtheta)
             gradients.append(flat_dJ_dtheta)
         flat_dJ_dtheta = np.asarray(gradients).mean(0)
+        # Combine the trajectories on the batches to one trajectory
+        z = np.vstack(zs)
     else:
-
+        z = hybrid_euler(z0, t, ode_parameters, nn_parameters) # 0.01-0.06s
+        loss = J(z, z_ref, ode_parameters, nn_parameters)
+        a0 = np.zeros(z0.shape)
+        adjoint = adjoint_euler(a0, np.flip(z, axis=0), np.flip(z_ref, axis=0), np.flip(t), ode_parameters, nn_parameters)
+        adjoint = np.flip(adjoint, axis=0)
         # Calculate the gradient of the hybrid ode with respect to the nn_parameters
         df_dtheta_trajectory = vectorized_df_dtheta_function(z, t, ode_parameters, nn_parameters)
-        # For loop probably not the fastest; Pytree probably better
         # Matrix multiplication of adjoint variable with jacobian
         df_dtheta_trajectory = unfreeze(df_dtheta_trajectory)
         for layer in df_dtheta_trajectory['params']:
@@ -487,85 +509,168 @@ def function_wrapper(flat_nn_parameters, optimizer_args):
         dJ_dtheta = df_dtheta
         flat_dJ_dtheta, _ = flatten_util.ravel_pytree(dJ_dtheta)
 
-    loss = J(z, z_ref, ode_parameters, nn_parameters)
+    # Calculate the Loss on the trajectory over the validation data
+    z_val = hybrid_euler(z_ref[-1], t_val, ode_parameters, nn_parameters)
+    val_loss = J(z_val, z_ref_val, ode_parameters, nn_parameters)
 
+    # If the training stagantes we could give the parameters a brownian noise kick
     if random_shift:
         if np.abs(loss - losses[-1]) < 0.1:
             flat_dJ_dtheta += np.random.normal(0, np.linalg.norm(flat_dJ_dtheta,2), flat_dJ_dtheta.shape)
 
+    # Plot the results in regular intervals
     if epoch % checkpoint_interval == 0:
-        plot_results(t, z, z_ref, results_path+f'_epoch_{epoch}')
-        z_val = hybrid_euler(z_ref[-1], t_val, ode_parameters, nn_parameters)
-        val_loss = J(z_val, z_ref_val, ode_parameters, nn_parameters)
-        print('#################################################')
-        print(f'Epoch: {epoch}, Valdiation Loss: {val_loss:.7f}')
-        plot_results(t_val, z_val, z_ref_val, results_path+f'_val_epoch_{epoch}')
-        # optimizer_args['saved_nn_parameters'] = nn_parameters
+        # Due to batching the length of z can change
+        plot_results(t[:z.shape[0]], z, z_ref[:z.shape[0]], os.path.join(results_directory,f'epoch_{epoch}'))
+        plot_results(t_val, z_val, z_ref_val, os.path.join(results_directory,f'val_epoch_{epoch}'))
 
-        # checkpoint_manager.save(epoch, nn_parameters, save_kwargs={'save_args': save_args})
-
-    optimizer_args['epoch'] += 1
-    optimizer_args['losses'].append(loss)
-
-    if epoch > 0 and loss < best_loss:
+    # Save the best parameters measured on the validation data
+    if epoch > 0 and val_loss < best_loss:
         optimizer_args['saved_nn_parameters'] = nn_parameters
         optimizer_args['best_loss'] = loss
         save_args = orbax_utils.save_args_from_target(nn_parameters)
         checkpoint_manager.save(epoch, nn_parameters, save_kwargs={'save_args': save_args})
 
+    # Regularise the optimizer with a punishment on the nn_parameters (bigger parameter values
+    # equals more a higher loss punishment)
+    if lambda_ == 0.0:
+        L2_regularisation = 0.0
+    else:
+        L2_regularisation = lambda_/(2*(t.shape[0])) * np.linalg.norm(flat_nn_parameters, 2)**2
+
+    optimizer_args['epoch'] += 1
+    optimizer_args['losses'].append(loss)
+    optimizer_args['val_losses'].append(val_loss)
+
     end = time.time()
+    print(f'Epoch: {epoch}, Loss: {loss:.5E}, Validation Loss {val_loss:.5E}, Time: {end-start:3.3f}')
 
-    # L2_regularisation = lambda_/(2*(t.shape[0])) * np.linalg.norm(flat_nn_parameters, 2)**2
-    L2_regularisation = 0.0
+    if val_loss < loss_cutoff:
+        warnings.warn('Terminating Optimization: Required Loss reached')
 
-    loss_cutoff = 1e-5
-    if loss < loss_cutoff:
-        warnings.warn(f'Terminating Optimization: Required Loss reached (<{loss_cutoff}')
-
-    print(f'Epoch: {epoch}, Loss: {loss:.10f}, Time: {end-start:3.3f}')
     return loss + L2_regularisation, flat_dJ_dtheta/(t.shape[0])
 
+def create_results_directory(directory, results_name, restore, overwrite):
+    results_directory = os.path.join(directory, args.results_name)
+    if os.path.exists(results_directory):
+        if restore:
+            print(f'Restoring parameters from previous run with Name: {args.results_name}')
+        else:
+            if overwrite:
+                print(f'Deleting previous run with Name: {results_name}')
+                shutil.rmtree(results_directory)
+                os.mkdir(results_directory)
+            else:
+                print(f'Run with name {results_name} already exists and are not to be restored or overwritten')
+                exit()
+    else:
+        os.mkdir(results_directory)
+    return results_directory
+
+def create_results_subdirectories(results_directory, a=False, r=False, c=True):
+    if a:
+        adjoint_directory = os.path.join(results_directory, 'adjoint')
+        if not os.path.exists(adjoint_directory):
+            os.mkdir(adjoint_directory)
+    else:
+        adjoint_directory = None
+
+    if r:
+        residual_directory = os.path.join(results_directory, 'residual')
+        if not os.path.exists(residual_directory):
+            os.mkdir(residual_directory)
+    else:
+        residual_directory = None
+
+    if c:
+        checkpoint_directory = os.path.join(results_directory, 'ckpt')
+        if not os.path.exists(checkpoint_directory):
+            os.mkdir(checkpoint_directory)
+    else:
+        checkpoint_directory = None
+
+    return adjoint_directory, residual_directory, checkpoint_directory
+
+def create_checkpoint_manager(checkpoint_directory, max_to_keep=1, create=True):
+    orbax_checkpointer = orbax.checkpoint.PyTreeCheckpointer()
+    options = orbax.checkpoint.CheckpointManagerOptions(max_to_keep=5, create=True)
+    checkpoint_manager = orbax.checkpoint.CheckpointManager(checkpoint_directory, orbax_checkpointer, options)
+    return checkpoint_manager
+
+def post_processing(z0, t, z_ref, z0_val, t_val, z_ref_val, reference_ode_parameters, directory, optimizer_args):
+    nn_parameters = optimizer_args['saved_nn_parameters']
+    z = hybrid_euler(z0, t, reference_ode_parameters, nn_parameters)
+    z_val = hybrid_euler(z0_val, t_val, reference_ode_parameters, nn_parameters)
+    loss = J(z, z_ref, reference_ode_parameters, nn_parameters)
+    val_loss = J(z_val, z_ref_val, reference_ode_parameters, nn_parameters)
+
+    print(f'Best Loss in Training: {loss}, Validation Loss: {val_loss}')
+
+    plot_results(t, z, z_ref, os.path.join(directory, 'best_training'))
+    plot_results(t_val, z_val, z_ref_val, os.path.join(directory, 'best_validation'))
+
+    # For plotting purposes we want to remove nan, inf, ... values from the loss data
+    plot_losses(range(optimizer_args['epoch']),
+                optimizer_args['losses'],
+                optimizer_args['val_losses'],
+                os.path.join(directory, 'losses'))
+
+    return loss, val_loss
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('--mu', type=float, default=8.53, help='damping value of the VdP damping term')
+    # ODE OPTIONS
+    parser.add_argument('--kappa', type=float, default=3.0, help='oscillation constant of the VdP oscillation term')
+    parser.add_argument('--mu', type=float, default=10.0, help='damping constant of the VdP damping term')
+    parser.add_argument('--mass', type=float, default=1.0, help='mass constant of the VdP system')
     parser.add_argument('--start', type=float, default=0.0, help='Start value of the ODE integration')
-    parser.add_argument('--end', type=float, default=20.0, help='End value of the ODE integration')
-    parser.add_argument('--nsteps', type=float, default=10001, help='How many integration steps to perform')
-
-    parser.add_argument('--layers', type=int, default=3, help='Number of hidden layers')
-    parser.add_argument('--layer_size', type=int, default=25, help='Number of neurons in a hidden layer')
-    parser.add_argument('--lambda_', type=int, default=0, help='lambda in the L2 regularisation term')
-
+    parser.add_argument('--end', type=float, default=50.0, help='End value of the ODE integration')
+    parser.add_argument('--n_steps', type=float, default=5001, help='How many integration steps to perform')
     parser.add_argument('--aug_state', type=bool, default=False, help='Whether or not to use the augemented state for the ODE dynamics')
     parser.add_argument('--aug_dim', type=int, default=4, help='Number of augment dimensions')
-    parser.add_argument('--random_shift', type=bool, default=False, help='Whether or not to shift the gradient of training stagnates')
-    parser.add_argument('--batching', type=bool, default=False, help='whether or not to batch the training data')
-    parser.add_argument('--batch_size', type=int, default=200, help='batch size (for samples-level batching)')
-    parser.add_argument('--times_per_obs', type=int, default=50, help='Over how many time steps one sample goes during batching')
-
-    parser.add_argument('--stimulate', type=bool, default=False, help='Whether or not to use the stimulated dynamics')
+    parser.add_argument('--stimulate', type=bool, default=True, help='Whether or not to use the stimulated dynamics')
     parser.add_argument('--simple_problem', type=bool, default=False, help='Whether or not to use a simple damped oscillator instead of VdP')
 
+    # NEURAL NETWORK OPTIONS
+    parser.add_argument('--layers', type=int, default=2, help='Number of hidden layers')
+    parser.add_argument('--layer_size', type=int, default=10, help='Number of neurons in a hidden layer')
+
+    # OPTIMIZER OPTIONS
     parser.add_argument('--method', type=str, default='BFGS', help='Which optimisation method to use')
-    parser.add_argument('--tol', type=float, default=1e-8, help='Tolerance for the optimisation method')
+    parser.add_argument('--tol', type=float, default=1e-10, help='Tolerance for the optimisation method')
     parser.add_argument('--opt_steps', type=float, default=1000, help='Max Number of steps for the Training')
+    parser.add_argument('--random_shift', type=bool, default=False, help='Whether or not to shift the gradient of training stagnates')
+    parser.add_argument('--batching', type=bool, default=True, help='whether or not to batch the training data')
+    parser.add_argument('--n_batches', type=int, default=40, help='How many (arbitrary) batches to create')
+    parser.add_argument('--batch_size', type=int, default=200, help='batch size (for samples-level batching)')
+    parser.add_argument('--clean_batching', type=bool, default=True, help='Whether or not to split training data into with no overlap')
+    parser.add_argument('--n_clean_batches', type=int, default=10, help='How many clean batches to create')
 
+    # TRANSFER LEARNING (RESIDUAL TRAINING) OPTIONS
     parser.add_argument('--transfer_learning', type=bool, default=True, help='Tolerance for the optimisation method')
-    parser.add_argument('--res_steps', type=float, default=500, help='Number of steps for the Pretraining on the Residuals')
-
+    parser.add_argument('--res_steps', type=float, default=1000, help='Number of steps for the Pretraining on the Residuals')
+    # MISC OPTIONS
+    parser.add_argument('--results_name', required=False, type=str, default='plot_test',
+                        help='name under which the results should be saved, like plots and such')
+    parser.add_argument('--lambda_', type=int, default=0, help='lambda in the L2 regularisation term')
+    parser.add_argument('--loss_cutoff', type=float, default=1e-3, help='lower bound for validation loss after which training is stopped')
     parser.add_argument('--build_plot', required=False, default=True, action='store_true',
                         help='specify to build loss and accuracy plot')
-    parser.add_argument('--results_name', required=False, type=str, default='demo',
-                        help='name under which the results should be saved, like plots and such')
+
     parser.add_argument('--checkpoint_interval', required=False, type=int, default=100,
                         help='path to save the resulting plot')
     parser.add_argument('--restore', required=False, type=bool, default=False,
                         help='restore previous parameters')
-    parser.add_argument('--doe', required=False, type=bool, default=True,
-                        help='Perform Design of Experiments with NN Parameters and ODE Hyperparameters')
-    parser.add_argument('--doe_title', required=False, type=str, default=None,
-                        help='Perform Design of Experiments with NN Parameters and ODE Hyperparameters')
+    parser.add_argument('--overwrite', required=False, type=bool, default=True,
+                        help='overwrite previous result')
+
+    # DESIGN OF EXPERIMENTS OPTIONS
+    parser.add_argument('--doe_residual', required=False, type=bool, default=True,
+                        help='Perform Design of Experiments with NN Parameters and ODE Hyperparameters on Residuals')
+    parser.add_argument('--doe_trajectory', required=False, type=bool, default=True,
+                        help='Perform Design of Experiments with NN Parameters and ODE Hyperparameters on Trajectory')
+    parser.add_argument('--doe_title', required=False, type=str, default='Full Test',
+                        help='Name for the DoE')
 
     parser.add_argument('--eval_freq', type=int, default=100, help='evaluate test accuracy every EVAL_FREQ '
                                                                    'samples-level batches')
@@ -574,27 +679,25 @@ if __name__ == '__main__':
     path = os.path.abspath(__file__)
     directory = os.path.sep.join(path.split(os.path.sep)[:-1])
     file_path = get_file_path(path)
-    # results_path = file_path + f'_{args.results_name}'
 
-    if not args.doe:
-        result_directory = os.path.join(directory, 'result')
-        if not os.path.exists(result_directory):
-            os.mkdir(result_directory)
-        result_path = os.path.join(result_directory, args.results_name)
+    if not (args.doe_residual or args.doe_adjoint):
 
-        residual_directory = os.path.join(directory, 'residual')
-        if not os.path.exists(residual_directory):
-            os.mkdir(residual_directory)
-        residual_path = os.path.join(residual_directory, args.results_name)
+        results_directory = create_results_directory(directory=directory,
+                                                     results_name=args.results_name,
+                                                     restore=args.restore,
+                                                     overwrite=args.overwrite)
 
-        checkpoint_directory = os.path.join(directory, 'ckpt')
-        if not os.path.exists(checkpoint_directory):
-            os.mkdir(checkpoint_directory)
+        with open(os.path.join(results_directory, 'Arguments'), 'a') as file:
+            file.write(str(args))
 
-        orbax_checkpointer = orbax.checkpoint.PyTreeCheckpointer()
-        options = orbax.checkpoint.CheckpointManagerOptions(max_to_keep=5, create=True)
-        checkpoint_manager = orbax.checkpoint.CheckpointManager(checkpoint_directory, orbax_checkpointer, options)
+        adjoint_directory, residual_directory, checkpoint_directory = create_results_subdirectories(results_directory=results_directory, a=True, r=True)
 
+        checkpoint_manager = create_checkpoint_manager(checkpoint_directory=checkpoint_directory,
+                                                       max_to_keep=5)
+
+        reference_ode_parameters = np.asarray([args.kappa, args.mu, args.mass])
+
+        # Generate the reference data for training
         if args.aug_state:
             ode = ode_aug
             hybrid_ode = hybrid_ode_aug
@@ -612,13 +715,13 @@ if __name__ == '__main__':
             z0 = np.array([2.0, 0.0])
         else:
             z0 = np.array([1.0, 0.0])
+        t = np.linspace(args.start, args.end, args.n_steps)
+        z_ref = f_euler(z0, t, reference_ode_parameters)
 
-        t_ref = np.linspace(args.start, args.end, args.nsteps)
-        t_val = np.linspace(args.end, (args.end-args.start) * 1.5, int(args.nsteps * 0.5))
-        reference_ode_parameters = np.asarray([1.0, args.mu, 1.0])
-        z_ref = f_euler(z0, t_ref, reference_ode_parameters)
+        # Generate the reference data for validation
         z0_val = z_ref[-1]
-        z_val = f_euler(z0_val, t_val, reference_ode_parameters)
+        t_val = np.linspace(args.end, (args.end-args.start) * 1.5, int(args.n_steps * 0.5))
+        z_ref_val = f_euler(z0_val, t_val, reference_ode_parameters)
 
         layers = [args.layer_size]*args.layers
         layers.append(1)
@@ -632,72 +735,75 @@ if __name__ == '__main__':
         flat_nn_parameters, unravel_pytree = flatten_util.ravel_pytree(nn_parameters)
         epoch = 0
         # Put all arguments the optimization needs into one array for the minimize function
-        optimizer_args = {'time' : t_ref,
-                        'val_time': t_val,
-                        'initial_condition' : z0,
-                        'reference_solution' : z_ref,
-                        'validation_solution' : z_val,
-                        'reference_ode_parameters' : reference_ode_parameters,
-                        'unravel_function' : unravel_pytree,
-                        'epoch' : epoch,
-                        'losses' : [],
-                        'batching' : args.batching,
-                        'random_shift' : args.random_shift,
-                        'checkpoint_interval' : args.checkpoint_interval,
-                        'results_path' : residual_path,
-                        'saved_nn_parameters' : nn_parameters,
-                        'best_loss' : np.inf,
-                        'checkpoint_manager' : checkpoint_manager,
-                        'lambda' : args.lambda_}
+        optimizer_args = {'time': t,
+                          'val_time': t_val,
+                          'initial_condition': z0,
+                          'reference_solution': z_ref,
+                          'validation_solution': z_ref_val,
+                          'reference_ode_parameters': reference_ode_parameters,
+                          'unravel_function': unravel_pytree,
+                          'epoch': epoch,
+                          'losses': [],
+                          'val_losses': [],
+                          'batching': args.batching,
+                          'n_batches': args.n_batches,
+                          'batch_size': args.batch_size,
+                          'clean_batching': args.clean_batching,
+                          'n_clean_batches': args.n_clean_batches,
+                          'random_shift': args.random_shift,
+                          'checkpoint_interval': args.checkpoint_interval,
+                          'results_directory': residual_directory,
+                          'saved_nn_parameters': nn_parameters,
+                          'best_loss': np.inf,
+                          'checkpoint_manager': checkpoint_manager,
+                          'lambda': args.lambda_,
+                          'loss_cutoff': args.loss_cutoff}
 
 
         # Train on Residuals
         ####################################################################################
         # Optimisers: CG, BFGS, Newton-CG, L-BFGS-B, TNC, SLSQP, dogleg, trust-ncg, trust-krylov, trust-exact and trust-constr
         if args.transfer_learning:
-            residual_result = minimize(residual_wrapper, flat_nn_parameters, method=args.method, jac=True, args=optimizer_args, options={'maxiter':args.res_steps})
+            try:
+                residual_result = minimize(residual_wrapper, flat_nn_parameters, method=args.method, jac=True, args=optimizer_args, options={'maxiter':args.res_steps})
+            except (KeyboardInterrupt, UserWarning):
+                pass
             nn_parameters = optimizer_args['saved_nn_parameters']
-            best_loss = optimizer_args['best_loss']
-            print(f'Best Loss in Residual Training: {best_loss}')
-            flat_nn_parameters, _ = flatten_util.ravel_pytree(nn_parameters)
-            # Plot the result of the training on residuals
-            z = hybrid_euler(z0, t_ref, reference_ode_parameters, nn_parameters)
-            path = os.path.abspath(__file__)
-            plot_path = get_file_path(path)
-            plot_results(t_ref, z, z_ref, residual_path+'_best')
-            optimizer_args['epoch'] = 0
+
+            post_processing(z0, t, z_ref, z0_val, t_val, z_ref_val, reference_ode_parameters, residual_directory, optimizer_args)
+
+            # # Plot the result of the training on residuals
+            # z = hybrid_euler(z0, t, reference_ode_parameters, nn_parameters)
+            # z_val = hybrid_euler(z0_val, t_val, reference_ode_parameters, nn_parameters)
+            # plot_results(t, z, z_ref, residual_directory+'_best_training')
+            # plot_results(t_val, z_val, z_ref_val, residual_directory+'_best_validation')
+            # plot_losses(range(optimizer_args['epoch']),
+            #             optimizer_args['losses'],
+            #             optimizer_args['val_losses'],
+            #             residual_directory+'_losses')
+
 
         # Train on Trajectory
         ####################################################################################
-        optimizer_args['results_path'] = result_path
+        flat_nn_parameters, _ = flatten_util.ravel_pytree(optimizer_args['saved_nn_parameters'])
+        optimizer_args['epoch'] = 0
+        optimizer_args['results_directory'] = adjoint_directory
+        optimizer_args['losses'] = []
+        optimizer_args['val_losses'] = []
         try:
-
-            res = minimize(function_wrapper, flat_nn_parameters, method='BFGS', jac=True, args=optimizer_args, tol=args.tol)
+            if args.opt_steps == 0:
+                res = minimize(function_wrapper, flat_nn_parameters, method='BFGS', jac=True, args=optimizer_args, tol=args.tol)
+            else:
+                res = minimize(function_wrapper, flat_nn_parameters, method='BFGS', jac=True, args=optimizer_args, tol=args.tol, options={'maxiter':args.opt_steps})
             print(res)
-        except KeyboardInterrupt:
+        except (KeyboardInterrupt, UserWarning):
             pass
-        nn_parameters = optimizer_args['saved_nn_parameters']
-        best_loss = optimizer_args['best_loss']
-        print(f'Best Loss in Training: {best_loss}')
 
-        z_training = hybrid_euler(z0, t_ref, reference_ode_parameters, nn_parameters)
-        z_validation = hybrid_euler(z0_val, t_val, reference_ode_parameters, nn_parameters)
-
-        path = os.path.abspath(__file__)
-        plot_path = get_file_path(path)
-        plot_results(t_ref, z_training, z_ref, result_path+'_best')
-        plot_results(t_val, z_validation, z_val, result_path+'_best_val')
+        # Print the result and generate trajectory and loss plots
+        post_processing(z0, t, z_ref, z0_val, t_val, z_ref_val, reference_ode_parameters, adjoint_directory, optimizer_args)
 
     else:
         # Perform Design of Experiment
-        vdp_doe = {'mu': [3,5,8],
-                   'T': [10, 20, 40],
-                   'n_steps': [201, 401, 801]}
-
-        levels = [len(val) for val in vdp_doe.values()]
-
-        doe = fullfact(levels)
-
         if args.doe_title is None:
             now = datetime.datetime.now()
             doe_date = '-'.join([str(now.year), str(now.month), str(now.day)]) + '_' + '-'.join([str(now.hour), str(now.minute)])
@@ -707,125 +813,286 @@ if __name__ == '__main__':
 
         if not os.path.exists(doe_directory):
             os.mkdir(doe_directory)
-        else:
-            print('DoE directory already exists, Date and Time is used as directory name instead')
-            now = datetime.datetime.now()
-            doe_date = '-'.join([str(now.year), str(now.month), str(now.day)]) + '_' + '-'.join([str(now.hour), str(now.minute)])
-            doe_directory = os.path.join(directory, doe_date)
-            os.mkdir(doe_directory)
+        # else:
+        #     print('DoE directory already exists, Date and Time is used as directory name instead')
+        #     now = datetime.datetime.now()
+        #     doe_date = '-'.join([str(now.year), str(now.month), str(now.day)]) + '_' + '-'.join([str(now.hour), str(now.minute)])
+        #     doe_directory = os.path.join(directory, doe_date)
+        #     os.mkdir(doe_directory)
 
-        doe_results_file_path = os.path.join(doe_directory, 'results.txt')
+        doe_results_file_path = os.path.join(doe_directory, 'doe_results.txt')
+        doe_best_setup_residual_file = os.path.join(doe_directory, 'best_setup_residual.yaml')
+        doe_best_setup_trajectory_file = os.path.join(doe_directory, 'best_setup_trajectory.yaml')
 
-        experiment_losses = []
-        experiment_strings = []
-        best_experiment = {'Experiment Number': None, 'Loss': np.inf, 'Validation Loss': None}
-        for n_exp, experiment in enumerate(doe):
-            start = time.time()
+        best_experiment_checkpoint_directory = os.path.join(doe_directory, 'best_result_ckpt')
+        if not os.path.exists(best_experiment_checkpoint_directory):
+            os.mkdir(best_experiment_checkpoint_directory)
 
-            experiment_directory = os.path.join(doe_directory, f'Experiment {n_exp}')
-            os.mkdir(experiment_directory)
+        if args.doe_residual:
 
-            mu = vdp_doe['mu'][int(experiment[0])]
-            T_end = vdp_doe['T'][int(experiment[1])]
-            n_steps = vdp_doe['n_steps'][int(experiment[2])]
-            experiment_strings.append(f'Experiment {n_exp} - mu: {mu}, Endtime: {T_end}, n_steps: {n_steps}')
+            residual_doe_parameters = OrderedDict({'lambda': [0.0, 1.0, 2.0],
+                                                   'layers': [1, 2, 3],
+                                                   'l_size': [10, 20, 40]})
 
-            print(experiment_strings[-1])
+            # residual_doe_parameters = OrderedDict({'lambda': [0.0],
+            #                                        'layers': [1],
+            #                                        'l_size': [10, 20]})
 
-            result_directory = os.path.join(experiment_directory, 'result')
-            if not os.path.exists(result_directory):
-                os.mkdir(result_directory)
-            result_path = os.path.join(result_directory, args.results_name)
+            levels = [len(val) for val in residual_doe_parameters.values()]
 
-            checkpoint_directory = os.path.join(experiment_directory, 'ckpt')
-            if not os.path.exists(checkpoint_directory):
-                os.mkdir(checkpoint_directory)
+            doe = fullfact(levels)
 
-            orbax_checkpointer = orbax.checkpoint.PyTreeCheckpointer()
-            options = orbax.checkpoint.CheckpointManagerOptions(max_to_keep=1, create=True)
-            checkpoint_manager = orbax.checkpoint.CheckpointManager(checkpoint_directory, orbax_checkpointer, options)
+            experiment_losses = []
+            experiment_strings = []
+            best_experiment = {'n_exp': None,
+                               'setup': {},
+                               'loss': np.inf,
+                               'val_loss': np.inf,
+                               'nn_parameters': None,
+                               'time': 0.0}
+            for n_exp, experiment in enumerate(doe):
+                start = time.time()
 
-            T_start = 0.0
-            z0 = np.array([1.0, 0.0])
+                experiment_directory = os.path.join(doe_directory, f'Residual Experiment {n_exp}')
+                if not os.path.exists(experiment_directory):
+                    os.mkdir(experiment_directory)
 
-            t_ref = np.linspace(T_start, T_end, n_steps)
-            t_val = np.linspace(T_end, (T_end-T_start) * 1.5, int(n_steps * 0.5))
-            reference_ode_parameters = np.asarray([1.0, mu, 1.0])
-            z_ref = f_euler(z0, t_ref, reference_ode_parameters)
-            z0_val = z_ref[-1]
-            z_val = f_euler(z0_val, t_val, reference_ode_parameters)
+                current_experiment_dict = {}
+                for i, key in enumerate(residual_doe_parameters.keys()):
+                    current_experiment_dict[key] = residual_doe_parameters[key][int(experiment[i])]
 
-            layers = [args.layer_size]*args.layers
-            layers.append(1)
-            jitted_neural_network, nn_parameters = create_nn(layers, z0)
+                experiment_strings.append(f'Residual Experiment {n_exp} - {current_experiment_dict}')
 
-            flat_nn_parameters, unravel_pytree = flatten_util.ravel_pytree(nn_parameters)
-            epoch = 0
-            # Put all arguments the optimization needs into one array for the minimize function
-            optimizer_args = {'time' : t_ref,
-                            'val_time': t_val,
-                            'initial_condition' : z0,
-                            'reference_solution' : z_ref,
-                            'validation_solution' : z_val,
-                            'reference_ode_parameters' : reference_ode_parameters,
-                            'unravel_function' : unravel_pytree,
-                            'epoch' : epoch,
-                            'losses' : [],
-                            'batching' : args.batching,
-                            'random_shift' : args.random_shift,
-                            'checkpoint_interval' : args.checkpoint_interval,
-                            'saved_nn_parameters' : nn_parameters,
-                            'best_loss' : np.inf,
-                            'checkpoint_manager' : checkpoint_manager,
-                            'lambda' : args.lambda_}
+                print(experiment_strings[-1])
 
-            if args.transfer_learning:
-                residual_directory = os.path.join(experiment_directory, 'residual')
-                if not os.path.exists(residual_directory):
-                    os.mkdir(residual_directory)
-                residual_path = os.path.join(residual_directory, args.results_name)
+                adjoint_directory, residual_directory, checkpoint_directory = create_results_subdirectories(experiment_directory, r=True)
 
-                optimizer_args['results_path'] = residual_path
+                checkpoint_manager = create_checkpoint_manager(checkpoint_directory=checkpoint_directory,
+                                                               max_to_keep=1)
 
-                residual_result = minimize(residual_wrapper, flat_nn_parameters, method=args.method, jac=True, args=optimizer_args, options={'maxiter':args.res_steps})
+                reference_ode_parameters = np.asarray([args.kappa, args.mu, args.mass])
+
+                z0 = np.array([1.0, 0.0])
+                t = np.linspace(args.start, args.end, args.n_steps)
+                z_ref = f_euler(z0, t, reference_ode_parameters)
+
+                z0_val = z_ref[-1]
+                t_val = np.linspace(args.end, (args.end-args.start) * 1.5, int(args.n_steps * 0.5))
+                z_ref_val = f_euler(z0_val, t_val, reference_ode_parameters)
+
+                layers = [current_experiment_dict['l_size']]*current_experiment_dict['layers']
+                layers.append(1)
+                jitted_neural_network, nn_parameters = create_nn(layers, z0)
+
+                flat_nn_parameters, unravel_pytree = flatten_util.ravel_pytree(nn_parameters)
+                epoch = 0
+                # Put all arguments the optimization needs into one array for the minimize function
+                optimizer_args = {'time': t,
+                                'val_time': t_val,
+                                'initial_condition': z0,
+                                'reference_solution': z_ref,
+                                'validation_solution': z_ref_val,
+                                'reference_ode_parameters': reference_ode_parameters,
+                                'unravel_function': unravel_pytree,
+                                'epoch': epoch,
+                                'losses': [],
+                                'val_losses': [],
+                                'batching': args.batching,
+                                'n_batches': args.n_batches,
+                                'batch_size': args.batch_size,
+                                'clean_batching': args.clean_batching,
+                                'n_clean_batches': args.n_clean_batches,
+                                'random_shift': args.random_shift,
+                                'checkpoint_interval': args.checkpoint_interval,
+                                'results_directory': residual_directory,
+                                'saved_nn_parameters': nn_parameters,
+                                'best_loss': np.inf,
+                                'checkpoint_manager': checkpoint_manager,
+                                'lambda': current_experiment_dict['lambda'],
+                                'loss_cutoff': args.loss_cutoff}
+
+                try:
+                    residual_result = minimize(residual_wrapper, flat_nn_parameters, method=args.method, jac=True, args=optimizer_args, options={'maxiter':args.res_steps})
+                except (KeyboardInterrupt, UserWarning):
+                    pass
                 nn_parameters = optimizer_args['saved_nn_parameters']
-                best_loss = optimizer_args['best_loss']
-                print(f'Best Loss in Residual Training: {best_loss}')
-                flat_nn_parameters, _ = flatten_util.ravel_pytree(nn_parameters)
-                # Plot the result of the training on residuals
-                z = hybrid_euler(z0, t_ref, reference_ode_parameters, nn_parameters)
-                path = os.path.abspath(__file__)
-                plot_path = get_file_path(path)
-                plot_results(t_ref, z, z_ref, residual_path+'_best')
-                optimizer_args['epoch'] = 0
+                loss, val_loss = post_processing(z0, t, z_ref, z0_val, t_val, z_ref_val, reference_ode_parameters, residual_directory, optimizer_args)
 
-            # Train on Trajectory
-            ####################################################################################
-            optimizer_args['results_path'] = result_path
-            try:
-                res = minimize(function_wrapper, flat_nn_parameters, method='BFGS', jac=True, args=optimizer_args, tol=args.tol, options={'maxiter': args.opt_steps})
-                print(res)
-            except KeyboardInterrupt or UserWarning:
-                pass
-            nn_parameters = optimizer_args['saved_nn_parameters']
-            best_loss = optimizer_args['best_loss']
-            z_training = hybrid_euler(z0, t_ref, reference_ode_parameters, nn_parameters)
-            z_validation = hybrid_euler(z0_val, t_val, reference_ode_parameters, nn_parameters)
-            validation_loss = J(z_validation, z_val, reference_ode_parameters, nn_parameters)
+                experiment_time = time.time()-start
 
-            print(f'Best Loss in Training: {best_loss}, Validation Loss: {validation_loss}')
+                experiment_strings[-1] = experiment_strings[-1] + f', Training loss: {loss:3.10f}, Validation loss: {val_loss:3.10f}, Time: {experiment_time:3.3f}'
 
-            plot_results(t_ref, z_training, z_ref, result_path+'_best')
-            plot_results(t_val, z_validation, z_val, result_path+'_best_val')
+                with open(doe_results_file_path, 'a') as file:
+                    file.writelines(experiment_strings[-1])
+                    file.write('\n')
 
-            experiment_losses.append(best_loss)
-            if best_loss < best_experiment['Loss']:
-                best_experiment['Experiment Number'] = n_exp
-                best_experiment['Loss'] = best_loss
-                best_experiment['Validation Loss'] = validation_loss
+                if val_loss < best_experiment['val_loss']:
+                    best_experiment['n_exp'] = n_exp
+                    best_experiment['setup'] = current_experiment_dict
+                    best_experiment['loss'] = loss
+                    best_experiment['val_loss'] = val_loss
+                    best_experiment['nn_parameters'] = nn_parameters
+                    best_experiment['time'] = experiment_time
+                    checkpoint_manager = create_checkpoint_manager(checkpoint_directory=best_experiment_checkpoint_directory,
+                                                                   max_to_keep=1)
+                    save_args = orbax_utils.save_args_from_target(nn_parameters)
+                    checkpoint_manager.save(0, nn_parameters, save_kwargs={'save_args': save_args})
 
-            experiment_strings[-1] = experiment_strings[-1] + f', Training loss: {best_loss:3.10f}, Validation loss: {validation_loss:3.10f}, Time: {(time.time()-start):3.3f}'
+            # best_n = best_experiment['n_exp']
+            # best_setup = best_experiment['setup']
+            # best_loss = best_experiment['loss']
+            # best_val_loss = best_experiment['val_loss']
+            # best_time = best_experiment['time']
+            # best_experiment_string = f'Experiment {best_n} - {best_setup}, Training loss: {best_loss:3.10f}, Validation loss: {best_val_loss:3.10f}, Time: {best_time:3.3f}'
+            # # Now we want to determine the best Experiment and store the associated parameters in a special place
+            # # so we can quickly access them
+            # with open(doe_results_file_path, 'a') as file:
+            #     file.writelines(best_experiment_string)
+            #     file.write('\n')
 
-            with open(doe_results_file_path, 'a') as file:
-                file.writelines(experiment_strings[-1])
-                file.write('\n')
+            # Clean up the best experiment for yaml dumping
+            yaml_dict = best_experiment.copy()
+            yaml_dict['loss'] = float(best_experiment['loss'])
+            yaml_dict['val_loss'] = float(best_experiment['val_loss'])
+            del yaml_dict['nn_parameters']
+
+            with open(doe_best_setup_residual_file, 'w') as file:
+                yaml.dump(yaml_dict, file)
+
+        if args.doe_trajectory:
+            if args.doe_residual:
+                # Restore parameters of residual run
+                checkpoint_manager = create_checkpoint_manager(checkpoint_directory=best_experiment_checkpoint_directory,
+                                                               max_to_keep=1)
+                step = checkpoint_manager.latest_step()
+                nn_parameters = checkpoint_manager.restore(step)
+
+                # Restore the rest of the results of the residual run
+                with open(doe_best_setup_residual_file, 'r') as file:
+                    best_experiment = yaml.safe_load(file)
+
+                layers = best_experiment['setup']['layers']
+                layer_size = best_experiment['setup']['l_size']
+                lambda_ = best_experiment['setup']['lambda']
+                trajectory_doe_parameters = OrderedDict({
+                    'n_clean_batches': [10, 20, 40],
+                    'lambda': [lambda_],
+                    'layers': [layers],
+                    'l_size': [layer_size],
+                })
+                best_experiment['nn_parameters'] = nn_parameters
+            else:
+                best_experiment = {'n_exp': None, 'setup': {}, 'loss': np.inf, 'val_loss': np.inf, 'nn_parameters': None, 'time': 0.0}
+                trajectory_doe_parameters = OrderedDict({
+                    'n_clean_batches': [10, 20, 40],
+                    'lambda': [0.0, 1.0, 2.0],
+                    'layers': [1, 2, 3],
+                    'l_size': [10, 20, 30]
+                })
+
+            levels = [len(val) for val in trajectory_doe_parameters.values()]
+
+            doe = fullfact(levels)
+
+            experiment_losses = []
+            experiment_strings = []
+            for n_exp, experiment in enumerate(doe):
+                start = time.time()
+
+                experiment_directory = os.path.join(doe_directory, f' Trajectory Experiment {n_exp}')
+                if not os.path.exists(experiment_directory):
+                    os.mkdir(experiment_directory)
+
+                current_experiment_dict = {}
+                for i, key in enumerate(trajectory_doe_parameters.keys()):
+                    current_experiment_dict[key] = trajectory_doe_parameters[key][int(experiment[i])]
+
+                experiment_strings.append(f'Trajectory Experiment {n_exp} - {current_experiment_dict}')
+
+                print(experiment_strings[-1])
+
+                adjoint_directory, residual_directory, checkpoint_directory = create_results_subdirectories(experiment_directory, a=True)
+
+                checkpoint_manager = create_checkpoint_manager(checkpoint_directory=checkpoint_directory,
+                                                               max_to_keep=1)
+
+                reference_ode_parameters = np.asarray([args.kappa, args.mu, args.mass])
+
+                z0 = np.array([1.0, 0.0])
+                t = np.linspace(args.start, args.end, args.n_steps)
+                z_ref = f_euler(z0, t, reference_ode_parameters)
+
+                z0_val = z_ref[-1]
+                t_val = np.linspace(args.end, (args.end-args.start) * 1.5, int(args.n_steps * 0.5))
+                z_ref_val = f_euler(z0_val, t_val, reference_ode_parameters)
+
+                layers = [current_experiment_dict['l_size']]*current_experiment_dict['layers']
+                layers.append(1)
+                if args.doe_residual:
+                    jitted_neural_network, _ = create_nn(layers, z0)
+                else:
+                    jitted_neural_network, nn_parameters = create_nn(layers, z0)
+
+                flat_nn_parameters, unravel_pytree = flatten_util.ravel_pytree(nn_parameters)
+                # Put all arguments the optimization needs into one array for the minimize function
+                optimizer_args = {'time': t,
+                                'val_time': t_val,
+                                'initial_condition': z0,
+                                'reference_solution': z_ref,
+                                'validation_solution': z_ref_val,
+                                'reference_ode_parameters': reference_ode_parameters,
+                                'unravel_function': unravel_pytree,
+                                'epoch': 0,
+                                'losses': [],
+                                'val_losses': [],
+                                'batching': args.batching,
+                                'n_batches': args.n_batches,
+                                'batch_size': args.batch_size,
+                                'clean_batching': args.clean_batching,
+                                'n_clean_batches': current_experiment_dict['n_clean_batches'],
+                                'random_shift': args.random_shift,
+                                'checkpoint_interval': args.checkpoint_interval,
+                                'results_directory': adjoint_directory,
+                                'saved_nn_parameters': nn_parameters,
+                                'best_loss': np.inf,
+                                'checkpoint_manager': checkpoint_manager,
+                                'lambda': current_experiment_dict['lambda'],
+                                'loss_cutoff': args.loss_cutoff}
+
+                # Train on Trajectory
+                ####################################################################################
+                try:
+                    res = minimize(function_wrapper, flat_nn_parameters, method='BFGS', jac=True, args=optimizer_args, tol=args.tol, options={'maxiter': args.opt_steps})
+                    print(res)
+                except (KeyboardInterrupt, UserWarning):
+                    pass
+                nn_parameters = optimizer_args['saved_nn_parameters']
+                loss, val_loss = post_processing(z0, t, z_ref, z0_val, t_val, z_ref_val, reference_ode_parameters, adjoint_directory, optimizer_args)
+
+                experiment_time = time.time()-start
+
+                experiment_strings[-1] = experiment_strings[-1] + f', Training loss: {loss:3.10f}, Validation loss: {val_loss:3.10f}, Time: {experiment_time:3.3f}'
+
+                with open(doe_results_file_path, 'a') as file:
+                    file.writelines(experiment_strings[-1])
+                    file.write('\n')
+
+                if val_loss < best_experiment['val_loss']:
+                    best_experiment['n_exp'] = n_exp
+                    best_experiment['setup'] = current_experiment_dict
+                    best_experiment['loss'] = loss
+                    best_experiment['val_loss'] = val_loss
+                    best_experiment['nn_parameters'] = nn_parameters
+                    best_experiment['time'] = experiment_time
+                    checkpoint_manager = create_checkpoint_manager(checkpoint_directory=best_experiment_checkpoint_directory,
+                                                                   max_to_keep=1)
+                    save_args = orbax_utils.save_args_from_target(nn_parameters)
+                    checkpoint_manager.save(0, nn_parameters, save_kwargs={'save_args': save_args})
+
+                yaml_dict = best_experiment.copy()
+                yaml_dict['loss'] = float(best_experiment['loss'])
+                yaml_dict['val_loss'] = float(best_experiment['val_loss'])
+                del yaml_dict['nn_parameters']
+
+                with open(doe_best_setup_trajectory_file, 'w') as file:
+                    yaml.dump(yaml_dict, file)
