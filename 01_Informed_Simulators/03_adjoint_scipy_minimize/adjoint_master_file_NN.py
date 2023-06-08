@@ -15,6 +15,7 @@ import time
 import argparse
 from functools import partial
 from jax import lax
+import warnings
 
 # To use the plot_results file we need to add the uppermost folder to the PYTHONPATH
 # Only Works if file gets called from 00_Code
@@ -157,7 +158,6 @@ def adjoint_f(adj, z, z_ref, t, ode_parameters, nn_parameters):
     d_adj = - df_dz.T @ adj - dg_dz
     return d_adj
 
-
 def g(z, z_ref, ode_parameters, nn_parameters):
     '''Calculates the inner part of the loss function.
 
@@ -230,7 +230,7 @@ def hybrid_step(prev_z, i, t, ode_parameters, nn_parameters):
     next_z = prev_z + dt * hybrid_ode(prev_z, t[i], ode_parameters, nn_parameters)
     return next_z, next_z
 
-def adj_euler(a0, z, z_ref, t, ode_parameters, nn_parameters):
+def adjoint_euler(a0, z, z_ref, t, ode_parameters, nn_parameters):
     '''Applies forward Euler to the adjoint ODE and returns the trajectory'''
     a = jnp.zeros((t.shape[0], a0.shape[0]))
     a = a.at[0].set(a0)
@@ -254,7 +254,6 @@ def adjoint_step(prev_a, i, z, z_ref, t, ode_parameters, nn_parameters):
     next_a = prev_a + dt * adjoint_f(prev_a, z[i], z_ref[i], t[i], ode_parameters, nn_parameters)
     return next_a, next_a
 
-
 # Based on https://www.mathworks.com/help/deeplearning/ug/dynamical-system-modeling-using-neural-ode.html#TrainNeuralODENetworkWithRungeKuttaODESolverExample-14
 def create_mini_batch(n_times_per_obs, mini_batch_size, X, adjoint, t):
 
@@ -276,6 +275,22 @@ def create_mini_batch(n_times_per_obs, mini_batch_size, X, adjoint, t):
         adjoints[i, 0:n_times_per_obs, :] = adjoint[s[i] + 0:(s[i] + n_times_per_obs), :]
         ts.append(t[s[i]:s[i]+n_times_per_obs])
 
+    return x0, targets, a0, adjoints, ts
+
+def create_clean_mini_batch(n_mini_batches, X, adjoint, t):
+    n_timesteps = t.shape[0]
+    # Create batches of trajectories
+    mini_batch_size = int(n_timesteps/n_mini_batches)
+    s = [mini_batch_size * i for i in range(n_mini_batches)]
+    x0 = X[s, :]
+    a0 = adjoint[s, :]
+    targets = np.empty((n_mini_batches, mini_batch_size, X.shape[1]))
+    adjoints = np.empty((n_mini_batches, mini_batch_size, adjoint.shape[1]))
+    ts = []
+    for i in range(n_mini_batches):
+        targets[i, 0:mini_batch_size, :] = X[s[i] + 0:(s[i] + mini_batch_size), :]
+        adjoints[i, 0:mini_batch_size, :] = adjoint[s[i] + 0:(s[i] + mini_batch_size), :]
+        ts.append(t[s[i]:s[i]+mini_batch_size])
     return x0, targets, a0, adjoints, ts
 
 def model_loss(z0, ts, ode_parameters, nn_parameters, targets):
@@ -347,6 +362,7 @@ def residual_wrapper(flat_nn_parameters, optimizer_args):
     results_path = optimizer_args['results_path']
     best_loss = optimizer_args['best_loss']
     checkpoint_manager = optimizer_args['checkpoint_manager']
+    lambda_ = optimizer_args['lambda']
 
 
     # Get the parameters of the neural network out of the array structure into the
@@ -378,11 +394,17 @@ def residual_wrapper(flat_nn_parameters, optimizer_args):
         plot_results(t, z, z_ref, results_path+f'_epoch_{epoch}')
         # optimizer_args['saved_nn_parameters'] = nn_parameters
 
+    # L2_regularisation = lambda_/(2*(t.shape[0])) * np.linalg.norm(flat_nn_parameters, 2)**2
+    L2_regularisation = 0.0
 
     end = time.time()
 
-    print(f'Pretraining: Epoch: {epoch}, Residual Loss: {res_loss:.7f}, True Loss: {true_loss:.7f}, Time: {end-start:3.3f}')
-    return res_loss, flat_gradient
+    loss_cutoff = 1e-5
+    if res_loss < loss_cutoff:
+        warnings.warn('Terminating Optimization: Required Loss reached')
+
+    print(f'Pretraining: Epoch: {epoch}, Residual Loss: {res_loss:.10f}, True Loss: {true_loss:.10f}, Time: {end-start:3.3f}')
+    return res_loss + L2_regularisation, flat_gradient
 
 def function_wrapper(flat_nn_parameters, optimizer_args):
     '''This is a function wrapper for the optimisation function. It returns the
@@ -394,17 +416,22 @@ def function_wrapper(flat_nn_parameters, optimizer_args):
     t = optimizer_args['time']
     z0 = optimizer_args['initial_condition']
     z_ref = optimizer_args['reference_solution']
-    z_val = optimizer_args['validation_solution']
+    z_ref_val = optimizer_args['validation_solution']
     ode_parameters = optimizer_args['reference_ode_parameters']
     unravel_pytree = optimizer_args['unravel_function']
     epoch = optimizer_args['epoch']
     losses = optimizer_args['losses']
     batching = optimizer_args['batching']
+    n_batches = optimizer_args['n_batches']
+    batch_size = optimizer_args['batch_size']
+    clean_batching = optimizer_args['clean_batching']
+    clean_n_batches = optimizer_args['clean_n_batches']
     random_shift = optimizer_args['random_shift']
     checkpoint_interval = optimizer_args['checkpoint_interval']
     results_path = optimizer_args['results_path']
     best_loss = optimizer_args['best_loss']
     checkpoint_manager = optimizer_args['checkpoint_manager']
+    lambda_ = optimizer_args['lambda']
 
     # Get the parameters of the neural network out of the array structure into the
     # tree structure
@@ -414,11 +441,14 @@ def function_wrapper(flat_nn_parameters, optimizer_args):
     z = np.nan_to_num(z, nan=1e8)
     a0 = np.zeros(z0.shape)
     # df_dtheta_trajectory = vectorized_df_dtheta_function(z, t, ode_parameters, nn_parameters)
-    adjoint = adj_euler(a0, np.flip(z, axis=0), np.flip(z_ref, axis=0), np.flip(t), ode_parameters, nn_parameters)
+    adjoint = adjoint_euler(a0, np.flip(z, axis=0), np.flip(z_ref, axis=0), np.flip(t), ode_parameters, nn_parameters)
     adjoint = np.flip(adjoint, axis=0)
 
     if batching:
-        z0s, targets, a0s, adjoints, ts = create_mini_batch(40, 200, z_ref, adjoint, t)
+        if clean_batching:
+            z0s, targets, a0s, adjoints, ts = create_clean_mini_batch(clean_n_batches, z_ref, adjoint, t)
+        else:
+            z0s, targets, a0s, adjoints, ts = create_mini_batch(n_batches, batch_size, z_ref, adjoint, t)
         zs, loss = model_loss(z0s, ts, ode_parameters, nn_parameters, targets)
         gradients = []
         for z_, adjoint_, t_ in zip(zs, adjoints, ts):
@@ -459,6 +489,12 @@ def function_wrapper(flat_nn_parameters, optimizer_args):
 
     if epoch % checkpoint_interval == 0:
         plot_results(t, z, z_ref, results_path+f'_epoch_{epoch}')
+        z_val = hybrid_euler(z_ref[-1], t_val, ode_parameters, nn_parameters)
+        val_loss = J(z_val, z_ref_val, ode_parameters, nn_parameters)
+        print('#################################################')
+        print(f'Epoch: {epoch}, Valdiation Loss: {val_loss:.7f}')
+        plot_results(t_val, z_val, z_ref_val, results_path+f'_val_epoch_{epoch}')
+
         # optimizer_args['saved_nn_parameters'] = nn_parameters
 
         # checkpoint_manager.save(epoch, nn_parameters, save_kwargs={'save_args': save_args})
@@ -483,23 +519,28 @@ if __name__ == '__main__':
     parser.add_argument('--mu', type=float, default=8.53, help='damping value of the VdP damping term')
     parser.add_argument('--start', type=float, default=0.0, help='Start value of the ODE integration')
     parser.add_argument('--end', type=float, default=20.0, help='End value of the ODE integration')
-    parser.add_argument('--nsteps', type=float, default=4001, help='How many integration steps to perform')
+    parser.add_argument('--nsteps', type=float, default=10001, help='How many integration steps to perform')
 
-    parser.add_argument('--layers', type=int, default=4, help='Number of hidden layers')
-    parser.add_argument('--layer_size', type=int, default=20, help='Number of neurons in a hidden layer')
+    parser.add_argument('--layers', type=int, default=3, help='Number of hidden layers')
+    parser.add_argument('--layer_size', type=int, default=25, help='Number of neurons in a hidden layer')
+    parser.add_argument('--lambda_', type=int, default=0, help='lambda in the L2 regularisation term')
 
     parser.add_argument('--aug_state', type=bool, default=False, help='Whether or not to use the augemented state for the ODE dynamics')
     parser.add_argument('--aug_dim', type=int, default=4, help='Number of augment dimensions')
     parser.add_argument('--random_shift', type=bool, default=False, help='Whether or not to shift the gradient of training stagnates')
     parser.add_argument('--batching', type=bool, default=False, help='whether or not to batch the training data')
+    parser.add_argument('--n_batches', type=int, default=40, help='How many (arbitrary) batches to create')
     parser.add_argument('--batch_size', type=int, default=200, help='batch size (for samples-level batching)')
-    parser.add_argument('--times_per_obs', type=int, default=50, help='Over how many time steps one sample goes during batching')
+    parser.add_argument('--clean_batching', type=bool, default=False, help='Whether or not to split training data into with no overlap')
+    parser.add_argument('--clean_n_batches', type=int, default=5, help='How many clean batches to create')
 
     parser.add_argument('--stimulate', type=bool, default=False, help='Whether or not to use the stimulated dynamics')
     parser.add_argument('--simple_problem', type=bool, default=False, help='Whether or not to use a simple damped oscillator instead of VdP')
 
     parser.add_argument('--method', type=str, default='BFGS', help='Which optimisation method to use')
-    parser.add_argument('--tol', type=float, default=1e-12, help='Tolerance for the optimisation method')
+    parser.add_argument('--tol', type=float, default=1e-8, help='Tolerance for the optimisation method')
+    parser.add_argument('--opt_steps', type=float, default=1000, help='Max Number of steps for the Training')
+
     parser.add_argument('--transfer_learning', type=bool, default=True, help='Tolerance for the optimisation method')
     parser.add_argument('--res_steps', type=float, default=500, help='Number of steps for the Pretraining on the Residuals')
 
@@ -509,7 +550,7 @@ if __name__ == '__main__':
                         help='name under which the results should be saved, like plots and such')
     parser.add_argument('--checkpoint_interval', required=False, type=int, default=100,
                         help='path to save the resulting plot')
-    parser.add_argument('--restore', required=False, type=float, default=False,
+    parser.add_argument('--restore', required=False, type=bool, default=False,
                         help='restore previous parameters')
 
     parser.add_argument('--eval_freq', type=int, default=100, help='evaluate test accuracy every EVAL_FREQ '
@@ -579,27 +620,36 @@ if __name__ == '__main__':
 
     # Put all arguments the optimization needs into one array for the minimize function
     optimizer_args = {'time' : t_ref,
-                      'initial_condition' : z0,
-                      'reference_solution' : z_ref,
-                      'validation_solution' : z_val,
-                      'reference_ode_parameters' : reference_ode_parameters,
-                      'unravel_function' : unravel_pytree,
-                      'epoch' : epoch,
-                      'losses' : [],
-                      'batching' : args.batching,
-                      'random_shift' : args.random_shift,
-                      'checkpoint_interval' : args.checkpoint_interval,
-                      'results_path' : residual_path,
-                      'saved_nn_parameters' : nn_parameters,
-                      'best_loss' : np.inf,
-                      'checkpoint_manager' : checkpoint_manager}
+                    'val_time': t_val,
+                    'initial_condition' : z0,
+                    'reference_solution' : z_ref,
+                    'validation_solution' : z_val,
+                    'reference_ode_parameters' : reference_ode_parameters,
+                    'unravel_function' : unravel_pytree,
+                    'epoch' : epoch,
+                    'losses' : [],
+                    'batching' : args.batching,
+                    'n_batches': args.n_batches,
+                    'batch_size': args.batch_size,
+                    'clean_batching': args.clean_batching,
+                    'clean_n_batches': args.clean_n_batches,
+                    'random_shift' : args.random_shift,
+                    'checkpoint_interval' : args.checkpoint_interval,
+                    'results_path' : residual_path,
+                    'saved_nn_parameters' : nn_parameters,
+                    'best_loss' : np.inf,
+                    'checkpoint_manager' : checkpoint_manager,
+                    'lambda' : args.lambda_}
 
 
     # Train on Residuals
     ####################################################################################
     # Optimisers: CG, BFGS, Newton-CG, L-BFGS-B, TNC, SLSQP, dogleg, trust-ncg, trust-krylov, trust-exact and trust-constr
     if args.transfer_learning:
-        residual_result = minimize(residual_wrapper, flat_nn_parameters, method=args.method, jac=True, args=optimizer_args, options={'maxiter':args.res_steps})
+        try:
+            residual_result = minimize(residual_wrapper, flat_nn_parameters, method=args.method, jac=True, args=optimizer_args, options={'maxiter':args.res_steps})
+        except (KeyboardInterrupt, UserWarning):
+            pass
         nn_parameters = optimizer_args['saved_nn_parameters']
         best_loss = optimizer_args['best_loss']
         print(f'Best Loss in Residual Training: {best_loss}')
@@ -615,10 +665,9 @@ if __name__ == '__main__':
     ####################################################################################
     optimizer_args['results_path'] = result_path
     try:
-
         res = minimize(function_wrapper, flat_nn_parameters, method='BFGS', jac=True, args=optimizer_args, tol=args.tol)
         print(res)
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, UserWarning):
         pass
     nn_parameters = optimizer_args['saved_nn_parameters']
     best_loss = optimizer_args['best_loss']
@@ -627,6 +676,5 @@ if __name__ == '__main__':
     z_training = hybrid_euler(z0, t_ref, reference_ode_parameters, nn_parameters)
     z_validation = hybrid_euler(z0_val, t_val, reference_ode_parameters, nn_parameters)
 
-    path = os.path.abspath(__file__)
-    plot_path = get_file_path(path)
     plot_results(t_ref, z_training, z_ref, result_path+'_best')
+    plot_results(t_val, z_validation, z_val, result_path+'_best_val')

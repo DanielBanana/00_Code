@@ -621,7 +621,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     # ODE OPTIONS
     parser.add_argument('--kappa', type=float, default=3.0, help='oscillation constant of the VdP oscillation term')
-    parser.add_argument('--mu', type=float, default=10.0, help='damping constant of the VdP damping term')
+    parser.add_argument('--mu', type=float, default=8.53, help='damping constant of the VdP damping term')
     parser.add_argument('--mass', type=float, default=1.0, help='mass constant of the VdP system')
     parser.add_argument('--start', type=float, default=0.0, help='Start value of the ODE integration')
     parser.add_argument('--end', type=float, default=50.0, help='End value of the ODE integration')
