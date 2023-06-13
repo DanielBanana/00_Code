@@ -305,15 +305,15 @@ if __name__ == '__main__':
     ####################################################################################
     # Training Setup
     train_Tstart = 0.0
-    train_Tend = 3.0
-    train_nSteps = 301
+    train_Tend = 100.0
+    train_nSteps = 5001
     train_t = np.linspace(train_Tstart, train_Tend, train_nSteps)
     train_z0 = np.array([1.0, 0.0])
 
     # Test Setup
     test_Tstart = train_Tend
-    test_Tend = train_Tend + 2.0
-    test_nSteps = 201
+    test_Tend = train_Tend + (train_Tend - train_Tstart)*0.5
+    test_nSteps = int(train_nSteps * 0.5)
     test_t = np.linspace(test_Tstart, test_Tend, test_nSteps)
 
     mu = 5.0
@@ -353,7 +353,6 @@ if __name__ == '__main__':
         print('Unable to use multiprocessing on GPU')
         use_multiprocessing = False
     device = torch.device(device)
-
 
 
     # TRAINING
