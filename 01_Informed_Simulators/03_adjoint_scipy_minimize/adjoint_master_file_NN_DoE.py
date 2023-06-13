@@ -22,16 +22,12 @@ import shutil
 from collections import OrderedDict
 import yaml
 warnings.filterwarnings("error")
-# from adjoint_master_file_NN import ode, ode_res, ode_aug, ode_simple, ode_stim, ode_stim_res
-# from adjoint_master_file_NN import f_euler
-# # from adjoint_master_file_NN import f_step, adjoint_step
-# from adjoint_master_file_NN import g, J, create_residuals, create_mini_batch, create_clean_mini_batch, model_loss
-# from adjoint_master_file_NN import residual_wrapper, function_wrapper
 
 # To use the plot_results file we need to add the uppermost folder to the PYTHONPATH
 # Only Works if file gets called from 00_Code
 sys.path.insert(0, os.getcwd())
 from plot_results import plot_results, plot_losses, get_file_path
+PI = np.pi
 
 '''
 Naming Conventions:
@@ -91,7 +87,7 @@ def ode_stim(z, t, ode_parameters):
     mu = ode_parameters[1]
     mass = ode_parameters[2]
     derivative = jnp.array([z[1],
-                           -kappa*z[0]/mass + (mu*(1-z[0]**2)*z[1])/mass + 1.2*jnp.cos(0.628*t)])
+                           -kappa*z[0]/mass + (mu*(1-z[0]**2)*z[1])/mass + 1.2*jnp.cos(jnp.pi/5*t)])
     return derivative
 
 @jit
@@ -101,7 +97,7 @@ def ode_stim_res(z, t, ode_parameters):
     mu = ode_parameters[1]
     mass = ode_parameters[2]
     derivative = jnp.array([z[1],
-                           -kappa*z[0]/mass + 1.2*jnp.cos(0.628*t)])
+                           -kappa*z[0]/mass + 1.2*jnp.cos(jnp.pi/5*t)])
     return derivative
 
 @jit
@@ -112,7 +108,7 @@ def hybrid_ode_stim(z, t, ode_parameters, nn_parameters):
     mu = ode_parameters[1]
     mass = ode_parameters[2]
     derivative = jnp.array([jnp.array((z[1],)),
-                            jnp.array((-kappa*z[0]/mass,)) + jitted_neural_network(nn_parameters, z) + jnp.array(1.2*jnp.cos(0.628*t))] ).flatten()
+                            jnp.array((-kappa*z[0]/mass,)) + jitted_neural_network(nn_parameters, z) + jnp.array(1.2*jnp.cos(jnp.pi/5*t))] ).flatten()
     return derivative
 
 @jit
@@ -190,7 +186,7 @@ def J_residual(inputs, outputs, nn_parameters):
         return (output-pred)**2
     return jnp.mean(jax.vmap(squared_error)(inputs, outputs), axis=0)[0]
 
-def create_residuals(z_ref, t, ode_parameters):
+def create_residual_references(z_ref, t, ode_parameters):
     z_dot = (z_ref[1:] - z_ref[:-1])/(t[1:] - t[:-1]).reshape(-1,1)
     v_ode = jax.vmap(lambda z_ref, t, ode_parameters: ode_res(z_ref, t, ode_parameters), in_axes=(0, 0, None))
     residual = z_dot - v_ode(z_ref[:-1], t[:-1], ode_parameters)
@@ -374,6 +370,7 @@ def residual_wrapper(flat_nn_parameters, optimizer_args):
     unravel_pytree = optimizer_args['unravel_function']
     epoch = optimizer_args['epoch']
     losses = optimizer_args['losses']
+    residual_losses = optimizer_args['residual_losses']
     batching = optimizer_args['batching']
     random_shift = optimizer_args['random_shift']
     checkpoint_interval = optimizer_args['checkpoint_interval']
@@ -382,6 +379,7 @@ def residual_wrapper(flat_nn_parameters, optimizer_args):
     checkpoint_manager = optimizer_args['checkpoint_manager']
     lambda_ = optimizer_args['lambda']
     loss_cutoff = optimizer_args['loss_cutoff']
+    residual_outputs = optimizer_args['residual_output']
 
     # Get the parameters of the neural network out of the array structure into the
     # tree structure
@@ -389,11 +387,10 @@ def residual_wrapper(flat_nn_parameters, optimizer_args):
 
     # in this case we only want the second part since the first part is completly known
     # and the neural network only works on the second part
-    outputs = create_residuals(z_ref, t, ode_parameters)[:,1]
-    inputs = z_ref[:-1]
+    residual_inputs = z_ref[:-1]
 
     # Calculate the loss and gradient over the Residuals
-    res_loss, gradient = jax.value_and_grad(J_residual, argnums=2)(inputs, outputs, nn_parameters)
+    res_loss, gradient = jax.value_and_grad(J_residual, argnums=2)(residual_inputs, residual_outputs, nn_parameters)
     flat_gradient, _ = flatten_util.ravel_pytree(gradient)
 
     # Calculate the Loss over the trajectory for the training and validation data
@@ -425,6 +422,7 @@ def residual_wrapper(flat_nn_parameters, optimizer_args):
     optimizer_args['epoch'] += 1
     optimizer_args['losses'].append(loss)
     optimizer_args['val_losses'].append(val_loss)
+    optimizer_args['residual_losses'].append(res_loss)
     end = time.time()
     print(f'Pretraining: Epoch: {epoch}, Residual Loss: {res_loss:.5E}, Loss: {loss:.5E}, Validation Loss: {val_loss:.5E} Time: {end-start:3.3f}')
 
@@ -615,16 +613,21 @@ def post_processing(z0, t, z_ref, z0_val, t_val, z_ref_val, reference_ode_parame
                 optimizer_args['val_losses'],
                 os.path.join(directory, 'losses'))
 
+    if optimizer_args['residual_losses'] != []:
+        plot_losses(range(optimizer_args['epoch']),
+                    optimizer_args['residual_losses'],
+                    path=os.path.join(directory, 'residual_losses'))
+
     return loss, val_loss
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     # ODE OPTIONS
-    parser.add_argument('--kappa', type=float, default=3.0, help='oscillation constant of the VdP oscillation term')
+    parser.add_argument('--kappa', type=float, default=1.0, help='oscillation constant of the VdP oscillation term')
     parser.add_argument('--mu', type=float, default=8.53, help='damping constant of the VdP damping term')
     parser.add_argument('--mass', type=float, default=1.0, help='mass constant of the VdP system')
     parser.add_argument('--start', type=float, default=0.0, help='Start value of the ODE integration')
-    parser.add_argument('--end', type=float, default=50.0, help='End value of the ODE integration')
+    parser.add_argument('--end', type=float, default=100.0, help='End value of the ODE integration')
     parser.add_argument('--n_steps', type=float, default=5001, help='How many integration steps to perform')
     parser.add_argument('--aug_state', type=bool, default=False, help='Whether or not to use the augemented state for the ODE dynamics')
     parser.add_argument('--aug_dim', type=int, default=4, help='Number of augment dimensions')
@@ -649,9 +652,10 @@ if __name__ == '__main__':
     # TRANSFER LEARNING (RESIDUAL TRAINING) OPTIONS
     parser.add_argument('--transfer_learning', type=bool, default=True, help='Tolerance for the optimisation method')
     parser.add_argument('--res_steps', type=float, default=1000, help='Number of steps for the Pretraining on the Residuals')
+
     # MISC OPTIONS
     parser.add_argument('--results_name', required=False, type=str, default='plot_test',
-                        help='name under which the results should be saved, like plots and such')
+                        help='name under which the results should be saved, like plots and such, ignored for DoE')
     parser.add_argument('--lambda_', type=int, default=0, help='lambda in the L2 regularisation term')
     parser.add_argument('--loss_cutoff', type=float, default=1e-3, help='lower bound for validation loss after which training is stopped')
     parser.add_argument('--build_plot', required=False, default=True, action='store_true',
@@ -669,7 +673,7 @@ if __name__ == '__main__':
                         help='Perform Design of Experiments with NN Parameters and ODE Hyperparameters on Residuals')
     parser.add_argument('--doe_trajectory', required=False, type=bool, default=True,
                         help='Perform Design of Experiments with NN Parameters and ODE Hyperparameters on Trajectory')
-    parser.add_argument('--doe_title', required=False, type=str, default='Full Test',
+    parser.add_argument('--doe_title', required=False, type=str, default='NN_parameter_transfer',
                         help='Name for the DoE')
 
     parser.add_argument('--eval_freq', type=int, default=100, help='evaluate test accuracy every EVAL_FREQ '
@@ -680,7 +684,7 @@ if __name__ == '__main__':
     directory = os.path.sep.join(path.split(os.path.sep)[:-1])
     file_path = get_file_path(path)
 
-    if not (args.doe_residual or args.doe_adjoint):
+    if not (args.doe_residual or args.doe_trajectory):
 
         results_directory = create_results_directory(directory=directory,
                                                      results_name=args.results_name,
@@ -745,6 +749,7 @@ if __name__ == '__main__':
                           'epoch': epoch,
                           'losses': [],
                           'val_losses': [],
+                          'residual_losses': [],
                           'batching': args.batching,
                           'n_batches': args.n_batches,
                           'batch_size': args.batch_size,
@@ -790,6 +795,7 @@ if __name__ == '__main__':
         optimizer_args['results_directory'] = adjoint_directory
         optimizer_args['losses'] = []
         optimizer_args['val_losses'] = []
+        optimizer_args['residual_losses'] = []
         try:
             if args.opt_steps == 0:
                 res = minimize(function_wrapper, flat_nn_parameters, method='BFGS', jac=True, args=optimizer_args, tol=args.tol)
@@ -810,9 +816,14 @@ if __name__ == '__main__':
             doe_directory = os.path.join(directory, doe_date)
         else:
             doe_directory = os.path.join(directory, args.doe_title)
-
-        if not os.path.exists(doe_directory):
-            os.mkdir(doe_directory)
+            if not os.path.exists(doe_directory):
+                os.mkdir(doe_directory)
+            else:
+                count = 1
+                while os.path.exists(doe_directory):
+                    doe_directory = os.path.join(directory, args.doe_title + f'_{count}')
+                    count += 1
+                os.mkdir(doe_directory)
         # else:
         #     print('DoE directory already exists, Date and Time is used as directory name instead')
         #     now = datetime.datetime.now()
@@ -824,19 +835,23 @@ if __name__ == '__main__':
         doe_best_setup_residual_file = os.path.join(doe_directory, 'best_setup_residual.yaml')
         doe_best_setup_trajectory_file = os.path.join(doe_directory, 'best_setup_trajectory.yaml')
 
+        with open(doe_results_file_path, 'a') as file:
+            file.writelines(f'VdP Setup: kappa: {args.kappa}, mu: {args.mu}, mass: {args.mass}, Start: {args.start}, End: {args.end}, Steps: {args.n_steps}')
+            file.write('\n')
+
         best_experiment_checkpoint_directory = os.path.join(doe_directory, 'best_result_ckpt')
         if not os.path.exists(best_experiment_checkpoint_directory):
             os.mkdir(best_experiment_checkpoint_directory)
 
         if args.doe_residual:
 
-            residual_doe_parameters = OrderedDict({'lambda': [0.0, 1.0, 2.0],
-                                                   'layers': [1, 2, 3],
-                                                   'l_size': [10, 20, 40]})
+            # residual_doe_parameters = OrderedDict({'lambda': [0.0, 1.0, 2.0],
+            #                                        'layers': [1, 2, 3],
+            #                                        'l_size': [10, 20, 40]})
 
-            # residual_doe_parameters = OrderedDict({'lambda': [0.0],
-            #                                        'layers': [1],
-            #                                        'l_size': [10, 20]})
+            residual_doe_parameters = OrderedDict({'lambda': [0.0],
+                                                   'layers': [1],
+                                                   'l_size': [10, 20]})
 
             levels = [len(val) for val in residual_doe_parameters.values()]
 
@@ -872,7 +887,25 @@ if __name__ == '__main__':
 
                 reference_ode_parameters = np.asarray([args.kappa, args.mu, args.mass])
 
-                z0 = np.array([1.0, 0.0])
+                # Generate the reference data for training
+                if args.aug_state:
+                    ode = ode_aug
+                    hybrid_ode = hybrid_ode_aug
+                    z0 = [1.0, 0.0]
+                    z0 += [0.0 for i in range(args.aug_dim)]
+                    z0 = np.asarray(z0)
+                elif args.stimulate:
+                    ode = ode_stim
+                    hybrid_ode = hybrid_ode_stim
+                    ode_res = ode_stim_res
+                    z0 = np.array([1.0, 0.0])
+                elif args.simple_problem:
+                    ode = ode_simple
+                    hybrid_ode = hybrid_ode_simple
+                    z0 = np.array([2.0, 0.0])
+                else:
+                    z0 = np.array([1.0, 0.0])
+
                 t = np.linspace(args.start, args.end, args.n_steps)
                 z_ref = f_euler(z0, t, reference_ode_parameters)
 
@@ -897,6 +930,7 @@ if __name__ == '__main__':
                                 'epoch': epoch,
                                 'losses': [],
                                 'val_losses': [],
+                                'residual_losses': [],
                                 'batching': args.batching,
                                 'n_batches': args.n_batches,
                                 'batch_size': args.batch_size,
@@ -936,7 +970,7 @@ if __name__ == '__main__':
                     checkpoint_manager = create_checkpoint_manager(checkpoint_directory=best_experiment_checkpoint_directory,
                                                                    max_to_keep=1)
                     save_args = orbax_utils.save_args_from_target(nn_parameters)
-                    checkpoint_manager.save(0, nn_parameters, save_kwargs={'save_args': save_args})
+                    checkpoint_manager.save(n_exp, nn_parameters, save_kwargs={'save_args': save_args})
 
             # best_n = best_experiment['n_exp']
             # best_setup = best_experiment['setup']
@@ -1035,6 +1069,7 @@ if __name__ == '__main__':
 
                 flat_nn_parameters, unravel_pytree = flatten_util.ravel_pytree(nn_parameters)
                 # Put all arguments the optimization needs into one array for the minimize function
+                residual_outputs = create_residual_references(z_ref, t, reference_ode_parameters)[:,1]
                 optimizer_args = {'time': t,
                                 'val_time': t_val,
                                 'initial_condition': z0,
@@ -1057,7 +1092,8 @@ if __name__ == '__main__':
                                 'best_loss': np.inf,
                                 'checkpoint_manager': checkpoint_manager,
                                 'lambda': current_experiment_dict['lambda'],
-                                'loss_cutoff': args.loss_cutoff}
+                                'loss_cutoff': args.loss_cutoff,
+                                'residual_outputs': residual_outputs}
 
                 # Train on Trajectory
                 ####################################################################################
