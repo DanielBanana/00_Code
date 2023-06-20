@@ -14,7 +14,7 @@ import sys
 # To use the plot_results file we need to add the uppermost folder to the PYTHONPATH
 # Only Works if file gets called from 00_Code
 sys.path.insert(0, os.getcwd())
-from plot_results import plot_results, get_plot_path
+from plot_results import plot_results, get_file_path
 
 def f(x):
     """Function we want the Neural Network to approximate
@@ -357,7 +357,7 @@ def loss(x, x_ref):
     return (x-x_ref)**2
 
 path = os.path.abspath(__file__)
-plot_path = get_plot_path(path)
+plot_path = get_file_path(path)
 
 # NEURAL NETWORK
 layers = [40, 1]
