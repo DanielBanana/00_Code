@@ -379,7 +379,7 @@ def residual_wrapper(flat_nn_parameters, optimizer_args):
     checkpoint_manager = optimizer_args['checkpoint_manager']
     lambda_ = optimizer_args['lambda']
     loss_cutoff = optimizer_args['loss_cutoff']
-    residual_outputs = optimizer_args['residual_output']
+    residual_outputs = optimizer_args['residual_outputs']
 
     # Get the parameters of the neural network out of the array structure into the
     # tree structure
@@ -627,11 +627,11 @@ if __name__ == '__main__':
     parser.add_argument('--mu', type=float, default=8.53, help='damping constant of the VdP damping term')
     parser.add_argument('--mass', type=float, default=1.0, help='mass constant of the VdP system')
     parser.add_argument('--start', type=float, default=0.0, help='Start value of the ODE integration')
-    parser.add_argument('--end', type=float, default=100.0, help='End value of the ODE integration')
-    parser.add_argument('--n_steps', type=float, default=5001, help='How many integration steps to perform')
+    parser.add_argument('--end', type=float, default=5.0, help='End value of the ODE integration')
+    parser.add_argument('--n_steps', type=float, default=501, help='How many integration steps to perform')
     parser.add_argument('--aug_state', type=bool, default=False, help='Whether or not to use the augemented state for the ODE dynamics')
     parser.add_argument('--aug_dim', type=int, default=4, help='Number of augment dimensions')
-    parser.add_argument('--stimulate', type=bool, default=True, help='Whether or not to use the stimulated dynamics')
+    parser.add_argument('--stimulate', type=bool, default=False, help='Whether or not to use the stimulated dynamics')
     parser.add_argument('--simple_problem', type=bool, default=False, help='Whether or not to use a simple damped oscillator instead of VdP')
 
     # NEURAL NETWORK OPTIONS
@@ -641,7 +641,8 @@ if __name__ == '__main__':
     # OPTIMIZER OPTIONS
     parser.add_argument('--method', type=str, default='BFGS', help='Which optimisation method to use')
     parser.add_argument('--tol', type=float, default=1e-10, help='Tolerance for the optimisation method')
-    parser.add_argument('--opt_steps', type=float, default=1000, help='Max Number of steps for the Training')
+    parser.add_argument('--lambda_', type=int, default=0, help='lambda in the L2 regularisation term')
+    parser.add_argument('--epochs', type=float, default=1000, help='Max Number of steps for the Training')
     parser.add_argument('--random_shift', type=bool, default=False, help='Whether or not to shift the gradient of training stagnates')
     parser.add_argument('--batching', type=bool, default=True, help='whether or not to batch the training data')
     parser.add_argument('--n_batches', type=int, default=40, help='How many (arbitrary) batches to create')
@@ -656,7 +657,6 @@ if __name__ == '__main__':
     # MISC OPTIONS
     parser.add_argument('--results_name', required=False, type=str, default='plot_test',
                         help='name under which the results should be saved, like plots and such, ignored for DoE')
-    parser.add_argument('--lambda_', type=int, default=0, help='lambda in the L2 regularisation term')
     parser.add_argument('--loss_cutoff', type=float, default=1e-3, help='lower bound for validation loss after which training is stopped')
     parser.add_argument('--build_plot', required=False, default=True, action='store_true',
                         help='specify to build loss and accuracy plot')
@@ -797,10 +797,10 @@ if __name__ == '__main__':
         optimizer_args['val_losses'] = []
         optimizer_args['residual_losses'] = []
         try:
-            if args.opt_steps == 0:
+            if args.epochs == 0:
                 res = minimize(function_wrapper, flat_nn_parameters, method='BFGS', jac=True, args=optimizer_args, tol=args.tol)
             else:
-                res = minimize(function_wrapper, flat_nn_parameters, method='BFGS', jac=True, args=optimizer_args, tol=args.tol, options={'maxiter':args.opt_steps})
+                res = minimize(function_wrapper, flat_nn_parameters, method='BFGS', jac=True, args=optimizer_args, tol=args.tol, options={'maxiter':args.epochs})
             print(res)
         except (KeyboardInterrupt, UserWarning):
             pass
@@ -918,6 +918,7 @@ if __name__ == '__main__':
                 jitted_neural_network, nn_parameters = create_nn(layers, z0)
 
                 flat_nn_parameters, unravel_pytree = flatten_util.ravel_pytree(nn_parameters)
+                residual_outputs = create_residual_references(z_ref, t, reference_ode_parameters)[:,1]
                 epoch = 0
                 # Put all arguments the optimization needs into one array for the minimize function
                 optimizer_args = {'time': t,
@@ -943,7 +944,8 @@ if __name__ == '__main__':
                                 'best_loss': np.inf,
                                 'checkpoint_manager': checkpoint_manager,
                                 'lambda': current_experiment_dict['lambda'],
-                                'loss_cutoff': args.loss_cutoff}
+                                'loss_cutoff': args.loss_cutoff,
+                                'residual_outputs': residual_outputs}
 
                 try:
                     residual_result = minimize(residual_wrapper, flat_nn_parameters, method=args.method, jac=True, args=optimizer_args, options={'maxiter':args.res_steps})
@@ -1098,7 +1100,7 @@ if __name__ == '__main__':
                 # Train on Trajectory
                 ####################################################################################
                 try:
-                    res = minimize(function_wrapper, flat_nn_parameters, method='BFGS', jac=True, args=optimizer_args, tol=args.tol, options={'maxiter': args.opt_steps})
+                    res = minimize(function_wrapper, flat_nn_parameters, method='BFGS', jac=True, args=optimizer_args, tol=args.tol, options={'maxiter': args.epochs})
                     print(res)
                 except (KeyboardInterrupt, UserWarning):
                     pass
