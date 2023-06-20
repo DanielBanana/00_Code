@@ -471,6 +471,8 @@ for n_exp, experiment in enumerate(doe):
             cbo.beta = cbo.beta * 1.001
             # cbo.gamma = cbo.gamma/(epoch+2) * (epoch+1)
             cbo.gamma = cbo.gamma * 0.999
+        if epoch % 100 == 0:
+            print(f'Epoch: {epoch}, training loss: {epoch_train_loss:3.3f}, validation loss: {val_loss[0]:3.3f}, time: {time.time()-start}')
     experiment_losses.append([train_losses[-1], val_loss[-1]])
     experiment_strings[-1] = experiment_strings[-1] + f', training loss: {train_losses[-1]:3.3f}, validation loss: {val_losses[-1][0]:3.3f}, time: {time.time()-start}'
     print(experiment_strings[-1])
