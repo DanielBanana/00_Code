@@ -445,13 +445,13 @@ if __name__ == '__main__':
                     ax1.legend()
                     ax1.set_xlabel('Epoch')
                     ax1.set_ylabel('Accuracy')
-                    ax1.set_title('Accuracy weighted with #Particles')
+                    ax1.set_title('Accuracy by #Particles')
 
                     ax2.plot(epochs_range, np.asarray(loss_history)*particles, label=label)
                     ax2.legend()
                     ax2.set_xlabel('Epoch')
                     ax2.set_ylabel('Loss')
-                    ax2.set_title('Loss weighted with #Particles')
+                    ax2.set_title('#Particles weighted Loss')
                 plt.suptitle(title)
                 plt.savefig(plot_file + '_{}_Epochs_weighted_by_particles.png'.format(k))
 
@@ -475,15 +475,15 @@ if __name__ == '__main__':
                     ax1.legend()
                     ax1.set_xlabel('Epoch')
                     ax1.set_ylabel('Accuracy')
-                    ax1.set_title('Accuracy weighted with #Particles/#Parameters')
+                    ax1.set_title('Accuracy by #Parameters')
 
                     ax2.plot(epochs_range, np.asarray(loss_history)*trainable_parameters, label=label)
                     ax2.legend()
                     ax2.set_xlabel('Epoch')
                     ax2.set_ylabel('Loss')
-                    ax2.set_title('Loss weighted with #Particles/#Parameters')
+                    ax2.set_title('Parameters weighted Loss')
                 plt.suptitle(title)
-                plt.savefig(plot_file + '_{}_Epochs_weighted_by_ppratio.png'.format(k))
+                plt.savefig(plot_file + '_{}_Epochs_weighted_by_parameters.png'.format(k))
 
             # Plot the Number of evaluations
             exp_idx = 0
