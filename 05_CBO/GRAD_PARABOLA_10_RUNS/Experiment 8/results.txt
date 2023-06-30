@@ -1,0 +1,470 @@
+
+{'models': 'PARA_25', 'epochs': 15}
+Trainable Parameters: 76
+Train Epoch: 0 	Loss: 42.499535, Forward Time: 0.312, Backward Time: 0.221
+Test set: Average Loss: 16.0748, Accuracy: (0%)
+
+Train Epoch: 1 	Loss: 5.848351, Forward Time: 0.343, Backward Time: 0.226
+Test set: Average Loss: 2.3508, Accuracy: (0%)
+
+Train Epoch: 2 	Loss: 2.333143, Forward Time: 0.418, Backward Time: 0.280
+Test set: Average Loss: 0.5382, Accuracy: (0%)
+
+Train Epoch: 3 	Loss: 2.094420, Forward Time: 0.439, Backward Time: 0.282
+Test set: Average Loss: 0.6037, Accuracy: (0%)
+
+Train Epoch: 4 	Loss: 2.170625, Forward Time: 0.358, Backward Time: 0.237
+Test set: Average Loss: 0.6350, Accuracy: (0%)
+
+Train Epoch: 5 	Loss: 2.130129, Forward Time: 0.295, Backward Time: 0.213
+Test set: Average Loss: 0.5817, Accuracy: (0%)
+
+Train Epoch: 6 	Loss: 2.160064, Forward Time: 0.352, Backward Time: 0.237
+Test set: Average Loss: 0.6743, Accuracy: (0%)
+
+Train Epoch: 7 	Loss: 2.167144, Forward Time: 0.296, Backward Time: 0.204
+Test set: Average Loss: 0.5026, Accuracy: (0%)
+
+Train Epoch: 8 	Loss: 2.038169, Forward Time: 0.464, Backward Time: 0.276
+Test set: Average Loss: 0.3501, Accuracy: (0%)
+
+Train Epoch: 9 	Loss: 2.063604, Forward Time: 0.441, Backward Time: 0.283
+Test set: Average Loss: 0.3398, Accuracy: (0%)
+
+Train Epoch: 10 	Loss: 2.114065, Forward Time: 0.469, Backward Time: 0.302
+Test set: Average Loss: 0.3134, Accuracy: (0%)
+
+Train Epoch: 11 	Loss: 1.980519, Forward Time: 0.474, Backward Time: 0.329
+Test set: Average Loss: 0.2963, Accuracy: (0%)
+
+Train Epoch: 12 	Loss: 2.098324, Forward Time: 0.496, Backward Time: 0.300
+Test set: Average Loss: 0.2860, Accuracy: (0%)
+
+Train Epoch: 13 	Loss: 2.158810, Forward Time: 0.353, Backward Time: 0.237
+Test set: Average Loss: 0.2677, Accuracy: (0%)
+
+Train Epoch: 14 	Loss: 2.049402, Forward Time: 0.291, Backward Time: 0.199
+Test set: Average Loss: 0.2504, Accuracy: (0%)
+
+{'models': 'PARA_25', 'epochs': 15}
+Trainable Parameters: 76
+Train Epoch: 0 	Loss: 42.775374, Forward Time: 0.265, Backward Time: 0.205
+Test set: Average Loss: 14.3022, Accuracy: (0%)
+
+Train Epoch: 1 	Loss: 5.873073, Forward Time: 0.441, Backward Time: 0.303
+Test set: Average Loss: 1.3567, Accuracy: (0%)
+
+Train Epoch: 2 	Loss: 2.502686, Forward Time: 0.404, Backward Time: 0.275
+Test set: Average Loss: 0.2967, Accuracy: (0%)
+
+Train Epoch: 3 	Loss: 2.140347, Forward Time: 0.344, Backward Time: 0.250
+Test set: Average Loss: 0.3792, Accuracy: (0%)
+
+Train Epoch: 4 	Loss: 2.261726, Forward Time: 0.304, Backward Time: 0.212
+Test set: Average Loss: 0.2150, Accuracy: (0%)
+
+Train Epoch: 5 	Loss: 2.068928, Forward Time: 0.293, Backward Time: 0.213
+Test set: Average Loss: 0.2297, Accuracy: (0%)
+
+Train Epoch: 6 	Loss: 2.082076, Forward Time: 0.341, Backward Time: 0.246
+Test set: Average Loss: 0.2235, Accuracy: (0%)
+
+Train Epoch: 7 	Loss: 2.015634, Forward Time: 0.300, Backward Time: 0.218
+Test set: Average Loss: 0.1310, Accuracy: (0%)
+
+Train Epoch: 8 	Loss: 2.136680, Forward Time: 0.298, Backward Time: 0.211
+Test set: Average Loss: 0.1598, Accuracy: (0%)
+
+Train Epoch: 9 	Loss: 2.062988, Forward Time: 0.386, Backward Time: 0.271
+Test set: Average Loss: 0.1594, Accuracy: (0%)
+
+Train Epoch: 10 	Loss: 2.026772, Forward Time: 0.332, Backward Time: 0.227
+Test set: Average Loss: 0.0936, Accuracy: (0%)
+
+Train Epoch: 11 	Loss: 2.055717, Forward Time: 0.570, Backward Time: 0.303
+Test set: Average Loss: 0.0865, Accuracy: (0%)
+
+Train Epoch: 12 	Loss: 2.032105, Forward Time: 0.581, Backward Time: 0.492
+Test set: Average Loss: 0.0825, Accuracy: (0%)
+
+Train Epoch: 13 	Loss: 2.039593, Forward Time: 0.602, Backward Time: 0.376
+Test set: Average Loss: 0.0825, Accuracy: (0%)
+
+Train Epoch: 14 	Loss: 2.139391, Forward Time: 0.547, Backward Time: 0.417
+Test set: Average Loss: 0.0769, Accuracy: (0%)
+
+{'models': 'PARA_25', 'epochs': 15}
+Trainable Parameters: 76
+Train Epoch: 0 	Loss: 42.861106, Forward Time: 0.302, Backward Time: 0.203
+Test set: Average Loss: 14.9726, Accuracy: (0%)
+
+Train Epoch: 1 	Loss: 5.611492, Forward Time: 0.272, Backward Time: 0.205
+Test set: Average Loss: 2.0269, Accuracy: (0%)
+
+Train Epoch: 2 	Loss: 2.422690, Forward Time: 0.323, Backward Time: 0.215
+Test set: Average Loss: 1.2335, Accuracy: (0%)
+
+Train Epoch: 3 	Loss: 2.057263, Forward Time: 0.360, Backward Time: 0.244
+Test set: Average Loss: 0.8903, Accuracy: (0%)
+
+Train Epoch: 4 	Loss: 2.226579, Forward Time: 0.300, Backward Time: 0.235
+Test set: Average Loss: 0.9943, Accuracy: (0%)
+
+Train Epoch: 5 	Loss: 2.055512, Forward Time: 0.202, Backward Time: 0.159
+Test set: Average Loss: 0.5748, Accuracy: (0%)
+
+Train Epoch: 6 	Loss: 2.116140, Forward Time: 0.199, Backward Time: 0.158
+Test set: Average Loss: 0.6466, Accuracy: (0%)
+
+Train Epoch: 7 	Loss: 2.281804, Forward Time: 0.207, Backward Time: 0.163
+Test set: Average Loss: 0.4303, Accuracy: (0%)
+
+Train Epoch: 8 	Loss: 2.184970, Forward Time: 0.202, Backward Time: 0.158
+Test set: Average Loss: 0.3603, Accuracy: (0%)
+
+Train Epoch: 9 	Loss: 2.121879, Forward Time: 0.202, Backward Time: 0.157
+Test set: Average Loss: 0.3518, Accuracy: (0%)
+
+Train Epoch: 10 	Loss: 2.035088, Forward Time: 0.202, Backward Time: 0.158
+Test set: Average Loss: 0.3129, Accuracy: (0%)
+
+Train Epoch: 11 	Loss: 2.076022, Forward Time: 0.190, Backward Time: 0.145
+Test set: Average Loss: 0.2907, Accuracy: (0%)
+
+Train Epoch: 12 	Loss: 2.027550, Forward Time: 0.201, Backward Time: 0.158
+Test set: Average Loss: 0.2601, Accuracy: (0%)
+
+Train Epoch: 13 	Loss: 2.035652, Forward Time: 0.211, Backward Time: 0.163
+Test set: Average Loss: 0.2504, Accuracy: (0%)
+
+Train Epoch: 14 	Loss: 2.130090, Forward Time: 0.213, Backward Time: 0.166
+Test set: Average Loss: 0.2260, Accuracy: (0%)
+
+{'models': 'PARA_25', 'epochs': 15}
+Trainable Parameters: 76
+Train Epoch: 0 	Loss: 43.332623, Forward Time: 0.243, Backward Time: 0.177
+Test set: Average Loss: 10.5992, Accuracy: (0%)
+
+Train Epoch: 1 	Loss: 5.681673, Forward Time: 0.374, Backward Time: 0.278
+Test set: Average Loss: 1.1162, Accuracy: (0%)
+
+Train Epoch: 2 	Loss: 2.325013, Forward Time: 0.383, Backward Time: 0.258
+Test set: Average Loss: 0.5353, Accuracy: (0%)
+
+Train Epoch: 3 	Loss: 2.133406, Forward Time: 0.297, Backward Time: 0.226
+Test set: Average Loss: 0.4287, Accuracy: (0%)
+
+Train Epoch: 4 	Loss: 2.116124, Forward Time: 0.273, Backward Time: 0.198
+Test set: Average Loss: 0.4741, Accuracy: (0%)
+
+Train Epoch: 5 	Loss: 2.215306, Forward Time: 0.287, Backward Time: 0.204
+Test set: Average Loss: 0.5570, Accuracy: (0%)
+
+Train Epoch: 6 	Loss: 2.103753, Forward Time: 0.303, Backward Time: 0.211
+Test set: Average Loss: 0.3881, Accuracy: (0%)
+
+Train Epoch: 7 	Loss: 2.047245, Forward Time: 0.311, Backward Time: 0.210
+Test set: Average Loss: 0.3847, Accuracy: (0%)
+
+Train Epoch: 8 	Loss: 2.070070, Forward Time: 0.280, Backward Time: 0.208
+Test set: Average Loss: 0.3002, Accuracy: (0%)
+
+Train Epoch: 9 	Loss: 1.984776, Forward Time: 0.265, Backward Time: 0.197
+Test set: Average Loss: 0.3203, Accuracy: (0%)
+
+Train Epoch: 10 	Loss: 1.998435, Forward Time: 0.264, Backward Time: 0.204
+Test set: Average Loss: 0.3237, Accuracy: (0%)
+
+Train Epoch: 11 	Loss: 2.016018, Forward Time: 0.323, Backward Time: 0.218
+Test set: Average Loss: 0.2302, Accuracy: (0%)
+
+Train Epoch: 12 	Loss: 2.162307, Forward Time: 0.274, Backward Time: 0.204
+Test set: Average Loss: 0.2271, Accuracy: (0%)
+
+Train Epoch: 13 	Loss: 1.981056, Forward Time: 0.339, Backward Time: 0.243
+Test set: Average Loss: 0.2138, Accuracy: (0%)
+
+Train Epoch: 14 	Loss: 2.158413, Forward Time: 0.289, Backward Time: 0.210
+Test set: Average Loss: 0.2061, Accuracy: (0%)
+
+{'models': 'PARA_25', 'epochs': 15}
+Trainable Parameters: 76
+Train Epoch: 0 	Loss: 42.348459, Forward Time: 0.192, Backward Time: 0.145
+Test set: Average Loss: 11.4416, Accuracy: (0%)
+
+Train Epoch: 1 	Loss: 5.550108, Forward Time: 0.190, Backward Time: 0.144
+Test set: Average Loss: 1.0664, Accuracy: (0%)
+
+Train Epoch: 2 	Loss: 2.394692, Forward Time: 0.197, Backward Time: 0.151
+Test set: Average Loss: 0.2576, Accuracy: (0%)
+
+Train Epoch: 3 	Loss: 2.087392, Forward Time: 0.195, Backward Time: 0.148
+Test set: Average Loss: 0.2126, Accuracy: (0%)
+
+Train Epoch: 4 	Loss: 2.199248, Forward Time: 0.196, Backward Time: 0.148
+Test set: Average Loss: 0.2045, Accuracy: (0%)
+
+Train Epoch: 5 	Loss: 2.107285, Forward Time: 0.203, Backward Time: 0.155
+Test set: Average Loss: 0.2143, Accuracy: (0%)
+
+Train Epoch: 6 	Loss: 2.155879, Forward Time: 0.193, Backward Time: 0.148
+Test set: Average Loss: 0.1188, Accuracy: (0%)
+
+Train Epoch: 7 	Loss: 2.097664, Forward Time: 0.189, Backward Time: 0.141
+Test set: Average Loss: 0.1468, Accuracy: (0%)
+
+Train Epoch: 8 	Loss: 2.114400, Forward Time: 0.191, Backward Time: 0.146
+Test set: Average Loss: 0.1068, Accuracy: (0%)
+
+Train Epoch: 9 	Loss: 2.131055, Forward Time: 0.197, Backward Time: 0.150
+Test set: Average Loss: 0.1057, Accuracy: (0%)
+
+Train Epoch: 10 	Loss: 2.165260, Forward Time: 0.198, Backward Time: 0.150
+Test set: Average Loss: 0.0945, Accuracy: (0%)
+
+Train Epoch: 11 	Loss: 2.205979, Forward Time: 0.198, Backward Time: 0.151
+Test set: Average Loss: 0.0810, Accuracy: (0%)
+
+Train Epoch: 12 	Loss: 2.021600, Forward Time: 0.192, Backward Time: 0.147
+Test set: Average Loss: 0.0708, Accuracy: (0%)
+
+Train Epoch: 13 	Loss: 2.145812, Forward Time: 0.191, Backward Time: 0.147
+Test set: Average Loss: 0.0710, Accuracy: (0%)
+
+Train Epoch: 14 	Loss: 2.071234, Forward Time: 0.195, Backward Time: 0.150
+Test set: Average Loss: 0.0657, Accuracy: (0%)
+
+{'models': 'PARA_25', 'epochs': 15}
+Trainable Parameters: 76
+Train Epoch: 0 	Loss: 42.282586, Forward Time: 0.174, Backward Time: 0.138
+Test set: Average Loss: 14.8403, Accuracy: (0%)
+
+Train Epoch: 1 	Loss: 5.714380, Forward Time: 0.175, Backward Time: 0.140
+Test set: Average Loss: 1.1697, Accuracy: (0%)
+
+Train Epoch: 2 	Loss: 2.480726, Forward Time: 0.178, Backward Time: 0.143
+Test set: Average Loss: 0.3082, Accuracy: (0%)
+
+Train Epoch: 3 	Loss: 2.154920, Forward Time: 0.173, Backward Time: 0.137
+Test set: Average Loss: 0.1188, Accuracy: (0%)
+
+Train Epoch: 4 	Loss: 2.111761, Forward Time: 0.176, Backward Time: 0.140
+Test set: Average Loss: 0.1680, Accuracy: (0%)
+
+Train Epoch: 5 	Loss: 2.175292, Forward Time: 0.178, Backward Time: 0.142
+Test set: Average Loss: 0.2375, Accuracy: (0%)
+
+Train Epoch: 6 	Loss: 2.177718, Forward Time: 0.179, Backward Time: 0.143
+Test set: Average Loss: 0.1034, Accuracy: (0%)
+
+Train Epoch: 7 	Loss: 2.077351, Forward Time: 0.181, Backward Time: 0.145
+Test set: Average Loss: 0.1475, Accuracy: (0%)
+
+Train Epoch: 8 	Loss: 2.191927, Forward Time: 0.182, Backward Time: 0.146
+Test set: Average Loss: 0.1460, Accuracy: (0%)
+
+Train Epoch: 9 	Loss: 2.022701, Forward Time: 0.181, Backward Time: 0.145
+Test set: Average Loss: 0.0807, Accuracy: (0%)
+
+Train Epoch: 10 	Loss: 2.153508, Forward Time: 0.172, Backward Time: 0.136
+Test set: Average Loss: 0.0667, Accuracy: (0%)
+
+Train Epoch: 11 	Loss: 2.066462, Forward Time: 0.177, Backward Time: 0.141
+Test set: Average Loss: 0.0740, Accuracy: (0%)
+
+Train Epoch: 12 	Loss: 2.118085, Forward Time: 0.176, Backward Time: 0.140
+Test set: Average Loss: 0.0680, Accuracy: (0%)
+
+Train Epoch: 13 	Loss: 2.141177, Forward Time: 0.172, Backward Time: 0.136
+Test set: Average Loss: 0.0701, Accuracy: (0%)
+
+Train Epoch: 14 	Loss: 2.103685, Forward Time: 0.181, Backward Time: 0.144
+Test set: Average Loss: 0.0695, Accuracy: (0%)
+
+{'models': 'PARA_25', 'epochs': 15}
+Trainable Parameters: 76
+Train Epoch: 0 	Loss: 42.589399, Forward Time: 0.171, Backward Time: 0.137
+Test set: Average Loss: 9.7805, Accuracy: (0%)
+
+Train Epoch: 1 	Loss: 5.780043, Forward Time: 0.181, Backward Time: 0.147
+Test set: Average Loss: 0.9179, Accuracy: (0%)
+
+Train Epoch: 2 	Loss: 2.389999, Forward Time: 0.181, Backward Time: 0.146
+Test set: Average Loss: 0.8136, Accuracy: (0%)
+
+Train Epoch: 3 	Loss: 2.294928, Forward Time: 0.181, Backward Time: 0.146
+Test set: Average Loss: 0.5552, Accuracy: (0%)
+
+Train Epoch: 4 	Loss: 2.036580, Forward Time: 0.180, Backward Time: 0.144
+Test set: Average Loss: 0.5795, Accuracy: (0%)
+
+Train Epoch: 5 	Loss: 2.041009, Forward Time: 0.175, Backward Time: 0.141
+Test set: Average Loss: 0.4554, Accuracy: (0%)
+
+Train Epoch: 6 	Loss: 2.129812, Forward Time: 0.180, Backward Time: 0.145
+Test set: Average Loss: 0.5784, Accuracy: (0%)
+
+Train Epoch: 7 	Loss: 2.021593, Forward Time: 0.180, Backward Time: 0.145
+Test set: Average Loss: 0.3901, Accuracy: (0%)
+
+Train Epoch: 8 	Loss: 2.060637, Forward Time: 0.197, Backward Time: 0.151
+Test set: Average Loss: 0.4123, Accuracy: (0%)
+
+Train Epoch: 9 	Loss: 2.183595, Forward Time: 0.186, Backward Time: 0.143
+Test set: Average Loss: 0.3618, Accuracy: (0%)
+
+Train Epoch: 10 	Loss: 2.055439, Forward Time: 0.188, Backward Time: 0.143
+Test set: Average Loss: 0.3537, Accuracy: (0%)
+
+Train Epoch: 11 	Loss: 1.960384, Forward Time: 0.197, Backward Time: 0.152
+Test set: Average Loss: 0.3256, Accuracy: (0%)
+
+Train Epoch: 12 	Loss: 2.113801, Forward Time: 0.188, Backward Time: 0.147
+Test set: Average Loss: 0.3221, Accuracy: (0%)
+
+Train Epoch: 13 	Loss: 2.167711, Forward Time: 0.195, Backward Time: 0.150
+Test set: Average Loss: 0.2938, Accuracy: (0%)
+
+Train Epoch: 14 	Loss: 2.005928, Forward Time: 0.189, Backward Time: 0.146
+Test set: Average Loss: 0.2869, Accuracy: (0%)
+
+{'models': 'PARA_25', 'epochs': 15}
+Trainable Parameters: 76
+Train Epoch: 0 	Loss: 40.318496, Forward Time: 0.170, Backward Time: 0.138
+Test set: Average Loss: 9.7375, Accuracy: (0%)
+
+Train Epoch: 1 	Loss: 5.577808, Forward Time: 0.176, Backward Time: 0.143
+Test set: Average Loss: 0.9253, Accuracy: (0%)
+
+Train Epoch: 2 	Loss: 2.536716, Forward Time: 0.175, Backward Time: 0.142
+Test set: Average Loss: 0.3806, Accuracy: (0%)
+
+Train Epoch: 3 	Loss: 2.203726, Forward Time: 0.175, Backward Time: 0.139
+Test set: Average Loss: 0.3241, Accuracy: (0%)
+
+Train Epoch: 4 	Loss: 2.099754, Forward Time: 0.169, Backward Time: 0.134
+Test set: Average Loss: 0.3787, Accuracy: (0%)
+
+Train Epoch: 5 	Loss: 2.162981, Forward Time: 0.166, Backward Time: 0.133
+Test set: Average Loss: 0.2743, Accuracy: (0%)
+
+Train Epoch: 6 	Loss: 2.052254, Forward Time: 0.171, Backward Time: 0.137
+Test set: Average Loss: 0.2149, Accuracy: (0%)
+
+Train Epoch: 7 	Loss: 1.956235, Forward Time: 0.170, Backward Time: 0.136
+Test set: Average Loss: 0.1864, Accuracy: (0%)
+
+Train Epoch: 8 	Loss: 2.055769, Forward Time: 0.174, Backward Time: 0.140
+Test set: Average Loss: 0.1653, Accuracy: (0%)
+
+Train Epoch: 9 	Loss: 2.048742, Forward Time: 0.182, Backward Time: 0.148
+Test set: Average Loss: 0.1935, Accuracy: (0%)
+
+Train Epoch: 10 	Loss: 2.176785, Forward Time: 0.179, Backward Time: 0.143
+Test set: Average Loss: 0.1601, Accuracy: (0%)
+
+Train Epoch: 11 	Loss: 2.131491, Forward Time: 0.181, Backward Time: 0.147
+Test set: Average Loss: 0.1454, Accuracy: (0%)
+
+Train Epoch: 12 	Loss: 2.195484, Forward Time: 0.177, Backward Time: 0.142
+Test set: Average Loss: 0.1313, Accuracy: (0%)
+
+Train Epoch: 13 	Loss: 2.078352, Forward Time: 0.179, Backward Time: 0.144
+Test set: Average Loss: 0.1194, Accuracy: (0%)
+
+Train Epoch: 14 	Loss: 2.097788, Forward Time: 0.184, Backward Time: 0.146
+Test set: Average Loss: 0.1156, Accuracy: (0%)
+
+{'models': 'PARA_25', 'epochs': 15}
+Trainable Parameters: 76
+Train Epoch: 0 	Loss: 45.525748, Forward Time: 0.172, Backward Time: 0.139
+Test set: Average Loss: 6.7490, Accuracy: (0%)
+
+Train Epoch: 1 	Loss: 6.008315, Forward Time: 0.170, Backward Time: 0.138
+Test set: Average Loss: 0.8802, Accuracy: (0%)
+
+Train Epoch: 2 	Loss: 2.394134, Forward Time: 0.175, Backward Time: 0.141
+Test set: Average Loss: 0.9986, Accuracy: (0%)
+
+Train Epoch: 3 	Loss: 2.077734, Forward Time: 0.159, Backward Time: 0.126
+Test set: Average Loss: 0.6289, Accuracy: (0%)
+
+Train Epoch: 4 	Loss: 2.115282, Forward Time: 0.167, Backward Time: 0.135
+Test set: Average Loss: 0.5664, Accuracy: (0%)
+
+Train Epoch: 5 	Loss: 2.128783, Forward Time: 0.168, Backward Time: 0.134
+Test set: Average Loss: 0.3757, Accuracy: (0%)
+
+Train Epoch: 6 	Loss: 2.090836, Forward Time: 0.173, Backward Time: 0.139
+Test set: Average Loss: 0.4759, Accuracy: (0%)
+
+Train Epoch: 7 	Loss: 2.098436, Forward Time: 0.180, Backward Time: 0.146
+Test set: Average Loss: 0.4767, Accuracy: (0%)
+
+Train Epoch: 8 	Loss: 2.111020, Forward Time: 0.181, Backward Time: 0.147
+Test set: Average Loss: 0.4364, Accuracy: (0%)
+
+Train Epoch: 9 	Loss: 2.030165, Forward Time: 0.174, Backward Time: 0.140
+Test set: Average Loss: 0.3990, Accuracy: (0%)
+
+Train Epoch: 10 	Loss: 2.054650, Forward Time: 0.174, Backward Time: 0.141
+Test set: Average Loss: 0.3473, Accuracy: (0%)
+
+Train Epoch: 11 	Loss: 2.085702, Forward Time: 0.170, Backward Time: 0.135
+Test set: Average Loss: 0.3082, Accuracy: (0%)
+
+Train Epoch: 12 	Loss: 2.120095, Forward Time: 0.177, Backward Time: 0.143
+Test set: Average Loss: 0.3114, Accuracy: (0%)
+
+Train Epoch: 13 	Loss: 2.154553, Forward Time: 0.166, Backward Time: 0.132
+Test set: Average Loss: 0.2835, Accuracy: (0%)
+
+Train Epoch: 14 	Loss: 2.090711, Forward Time: 0.168, Backward Time: 0.135
+Test set: Average Loss: 0.2737, Accuracy: (0%)
+
+{'models': 'PARA_25', 'epochs': 15}
+Trainable Parameters: 76
+Train Epoch: 0 	Loss: 41.989374, Forward Time: 0.194, Backward Time: 0.151
+Test set: Average Loss: 12.5224, Accuracy: (0%)
+
+Train Epoch: 1 	Loss: 5.727009, Forward Time: 0.188, Backward Time: 0.147
+Test set: Average Loss: 1.8555, Accuracy: (0%)
+
+Train Epoch: 2 	Loss: 2.387240, Forward Time: 0.183, Backward Time: 0.141
+Test set: Average Loss: 0.2793, Accuracy: (0%)
+
+Train Epoch: 3 	Loss: 2.192262, Forward Time: 0.198, Backward Time: 0.155
+Test set: Average Loss: 0.3974, Accuracy: (0%)
+
+Train Epoch: 4 	Loss: 2.270643, Forward Time: 0.196, Backward Time: 0.152
+Test set: Average Loss: 0.3097, Accuracy: (0%)
+
+Train Epoch: 5 	Loss: 2.158690, Forward Time: 0.186, Backward Time: 0.141
+Test set: Average Loss: 0.1970, Accuracy: (0%)
+
+Train Epoch: 6 	Loss: 1.935452, Forward Time: 0.183, Backward Time: 0.141
+Test set: Average Loss: 0.1803, Accuracy: (0%)
+
+Train Epoch: 7 	Loss: 2.024791, Forward Time: 0.178, Backward Time: 0.136
+Test set: Average Loss: 0.1414, Accuracy: (0%)
+
+Train Epoch: 8 	Loss: 2.144486, Forward Time: 0.179, Backward Time: 0.136
+Test set: Average Loss: 0.1396, Accuracy: (0%)
+
+Train Epoch: 9 	Loss: 2.186327, Forward Time: 0.185, Backward Time: 0.143
+Test set: Average Loss: 0.1320, Accuracy: (0%)
+
+Train Epoch: 10 	Loss: 2.077284, Forward Time: 0.190, Backward Time: 0.148
+Test set: Average Loss: 0.1179, Accuracy: (0%)
+
+Train Epoch: 11 	Loss: 2.174513, Forward Time: 0.183, Backward Time: 0.141
+Test set: Average Loss: 0.1154, Accuracy: (0%)
+
+Train Epoch: 12 	Loss: 2.237645, Forward Time: 0.175, Backward Time: 0.133
+Test set: Average Loss: 0.1088, Accuracy: (0%)
+
+Train Epoch: 13 	Loss: 2.103896, Forward Time: 0.183, Backward Time: 0.142
+Test set: Average Loss: 0.1043, Accuracy: (0%)
+
+Train Epoch: 14 	Loss: 2.185630, Forward Time: 0.178, Backward Time: 0.136
+Test set: Average Loss: 0.0968, Accuracy: (0%)

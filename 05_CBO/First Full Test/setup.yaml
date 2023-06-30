@@ -1,0 +1,17 @@
+loss: .inf
+loss_test: .inf
+n_exp: 530
+residual_loss: 170.02294067425123
+residual_loss_test: 407.4210063050202
+setup:
+  alpha: 1.0
+  batch_size: 200
+  cooling: false
+  dt: 0.01
+  l: 1.0
+  layer_size: 40
+  layers: 2
+  n_layers: 2
+  particles: 10
+  sigma: 0.6324555320336759
+time: 4.297374248504639
