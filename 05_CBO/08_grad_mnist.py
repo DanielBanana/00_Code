@@ -27,9 +27,9 @@ from collections import OrderedDict
 from pyDOE2 import fullfact
 
 MODELS = {
-    'MNIST_10': MNIST_726x10,
-    'MNIST_20': MNIST_726x20,
-    'MNIST_10x10': MNIST_726x10x10,
+    'MNIST_726x10': MNIST_726x10,
+    'MNIST_726x20': MNIST_726x20,
+    'MNIST_726x10x10': MNIST_726x10x10,
     'PARA_5x5x5' : PARA_5x5x5,
     'PARA_7x7': PARA_7x7,
     'PARA_25': PARA_25,
@@ -268,7 +268,7 @@ if __name__ == '__main__':
 
     parser.add_argument('--model', type=str, default='Net', help=f'architecture to use',
                         choices=list(MODELS.keys()))
-    parser.add_argument('--dataset', type=str, default='PARABOLA', help='dataset to use',
+    parser.add_argument('--dataset', type=str, default='MNIST', help='dataset to use',
                         choices=list(DATASETS.keys()))
 
     parser.add_argument('--device', type=str, choices=['cuda', 'cpu'], default='cuda',
@@ -307,8 +307,10 @@ if __name__ == '__main__':
                                                                      'samples-level batches')
     parser.add_argument('--save-model', action='store_true', default=True,
                         help='For Saving the current Model')
-    parser.add_argument('--results_directory_name', required=False, type=str, default='grad_parabola',
+    parser.add_argument('--results_directory_name', required=False, type=str, default='grad_mnist',
                         help='name under which the results should be saved, like plots and such')
+    parser.add_argument('--n_runs', type=int, default=10,
+                        help='DoE Parameter; how often each configuration should be run to compute an average')
 
     doe = True
 
@@ -362,7 +364,7 @@ if __name__ == '__main__':
 
         if args.dataset == 'PARABOLA':
             doe_models = ['PARA_5x5x5', 'PARA_7x7', 'PARA_25']
-            doe_epochs = [50, 100, 150]
+            doe_epochs = [5, 10, 15]
         else:
             doe_models = ['MNIST_726x10', 'MNIST_726x10x10', 'MNIST_726x20']
             doe_epochs = [5, 10, 15]
@@ -375,157 +377,165 @@ if __name__ == '__main__':
 
         experiment_result_by_epochs = {}
         for doe_epoch in doe_epochs:
-            experiment_result_by_epochs['{}'.format(doe_epoch)] = []
+            experiment_result_by_epochs['{}'.format(doe_epoch)] = {}
 
-        for n_exp, experiment in enumerate(experiments):
-            nn_model = experiment['models']
-            epochs = experiment['epochs']
-            model = MODELS[nn_model]()
-            print(f'Training {nn_model} @ {args.dataset}')
-            forward_evals, backward_evals = number_of_nn_evaluations(len(train_dataloader),
-                                                epochs)
-            print(f'Number of forward NN evaluations: {forward_evals}')
-            print(f'Number of backward NN evaluations: {backward_evals}')
-            trainable_parameters = sum(p.numel() for p in model.parameters() if p.requires_grad)
+        for averaging_run in range(1, args.n_runs+1):
 
-            experiment_directory = create_experiment_directory(results_directory, n_exp)
-            run_file = os.path.join(experiment_directory, 'results.txt')
-            parameter_file_name = '{}_{}.pt'.format(args.dataset, nn_model)
-            parameter_file = os.path.join(experiment_directory, parameter_file_name)
-            with open(run_file, 'a') as file:
-                file.write(str(experiment)+'\n')
-                file.write('Trainable Parameters: {}'.format(trainable_parameters))
+            for n_exp, experiment in enumerate(experiments):
+                nn_model = experiment['models']
+                epochs = experiment['epochs']
+                model = MODELS[nn_model]()
+                print(f'Training {nn_model} @ {args.dataset}')
+                forward_evals, backward_evals = number_of_nn_evaluations(len(train_dataloader),
+                                                    epochs)
+                print(f'Number of forward NN evaluations: {forward_evals}')
+                print(f'Number of backward NN evaluations: {backward_evals}')
+                trainable_parameters = sum(p.numel() for p in model.parameters() if p.requires_grad)
 
-            start_time = time.time()
-            result = train(model, train_dataloader, test_dataloader, device, use_multiprocessing, args.processes,
-                        epochs, args.lr, args.gamma, args.log_interval, problem_type=problem_type)
-            elapsed_time = time.time() - start_time
+                experiment_directory = create_experiment_directory(results_directory, n_exp)
+                run_file = os.path.join(experiment_directory, 'results.txt')
+                parameter_file_name = '{}_{}.pt'.format(args.dataset, nn_model)
+                parameter_file = os.path.join(experiment_directory, parameter_file_name)
+                with open(run_file, 'a') as file:
+                    file.write('\n' + str(experiment))
+                    file.write('\nTrainable Parameters: {}'.format(trainable_parameters))
 
-            accuracies_train, accuracies_test, losses_train, losses_test, forward_times, backward_times = result
-            forward_time = np.sum(forward_times)
-            backward_time = np.sum(backward_times)
-            forward_time_one = forward_time/forward_evals
-            effective_forward_evals = forward_evals + backward_time/forward_time_one
+                start_time = time.time()
+                result = train(model, train_dataloader, test_dataloader, device, use_multiprocessing, args.processes,
+                            epochs, args.lr, args.gamma, args.log_interval, problem_type=problem_type)
+                elapsed_time = time.time() - start_time
 
-            print('Elapsed time: {:.1f} seconds, Forward: {:.3f}, Backward: {:.3f}'.format(
-                elapsed_time, forward_time, backward_time))
+                accuracies_train, accuracies_test, losses_train, losses_test, forward_times, backward_times = result
+                forward_time = np.sum(forward_times)
+                backward_time = np.sum(backward_times)
+                forward_time_one = forward_time/forward_evals
+                effective_forward_evals = forward_evals + backward_time/forward_time_one
 
-            best_epoch = np.argmin(np.array(losses_test))
-            best_accuracy_test = accuracies_test[best_epoch]
-            best_loss_test = losses_test[best_epoch]
-            experiment_result_by_epochs['{}'.format(epochs)].append({'NN': nn_model,
-                                                                     'loss': losses_test,
-                                                                     'acc': accuracies_test,
-                                                                     'forward_evals': effective_forward_evals,
-                                                                     'time': elapsed_time})
+                print('Elapsed time: {:.1f} seconds, Forward: {:.3f}, Backward: {:.3f}'.format(
+                    elapsed_time, forward_time, backward_time))
 
-            if args.build_plot:
-                result = result[0:4]
-                build_plot(epochs, args.model, args.dataset, os.path.join(results_directory, 'loss_' + args.plot_path),*result)
+                best_epoch = np.argmin(np.array(losses_test))
+                best_accuracy_test = accuracies_test[best_epoch]
+                best_loss_test = losses_test[best_epoch]
 
-            with open(results_file, 'a') as file:
-                file.write('''\nExperiment {}/{}, Best Epoch: {}/{}, Best Loss: {:.4f}, Best Accuracy: ({:.0f}%), Final Loss: {:.4f}, Final Accuracy: ({:.0f}%), NN-Evaluations (forw./backw.): {}/{} ({:.3f}s/{:.3f}s), Par. {} Time: {:.1f}'''.format(
-                    n_exp, len(experiments)-1, best_epoch, epochs, best_loss_test,
-                    best_accuracy_test*100, losses_test[-1], accuracies_test[-1]*100,
-                    forward_evals, backward_evals, forward_time, backward_time,
-                    trainable_parameters, elapsed_time
-                ))
-            if args.save_model:
-                torch.save(model.state_dict(), parameter_file)
+                if nn_model not in experiment_result_by_epochs['{}'.format(epochs)].keys():
+                    experiment_result_by_epochs['{}'.format(epochs)][nn_model]={'loss': [],
+                                                                                'acc': [],
+                                                                                'forward_evals': [],
+                                                                                'time': []}
 
-            # PLOTTIN THE RESULTS FOR ALL EXPERIMENTS IN 2 PLOTS
-            for k, experiment_results in experiment_result_by_epochs.items():
-                title = 'Results for {} Epochs'.format(k)
-                plt.rcParams['figure.figsize'] = (20, 10)
-                plt.rcParams['font.size'] = 25
-                epochs_range = np.arange(1, int(k) + 1, dtype=int)
-                plt.clf()
-                fig, (ax1, ax2) = plt.subplots(1, 2)
-                for experiment in experiment_results:
-                    experiment_model = experiment['NN']
-                    loss_history = experiment['loss']
-                    acc_history = experiment['acc']
-                    label = '{}'.format(experiment_model)
+                experiment_result_by_epochs['{}'.format(epochs)][nn_model]['loss'].append(losses_test)
+                experiment_result_by_epochs['{}'.format(epochs)][nn_model]['acc'].append(accuracies_test)
+                experiment_result_by_epochs['{}'.format(epochs)][nn_model]['forward_evals'].append(effective_forward_evals)
+                experiment_result_by_epochs['{}'.format(epochs)][nn_model]['time'].append(elapsed_time)
 
-                    ax1.plot(epochs_range, acc_history, label=label)
-                    ax1.legend()
-                    ax1.set_xlabel('epoch')
-                    ax1.set_ylabel('accuracy')
-                    ax1.set_title('Accuracy')
+                # if args.build_plot:
+                #     result = result[0:4]
+                #     build_plot(epochs, args.model, args.dataset, os.path.join(results_directory, 'loss_' + args.plot_path),*result)
 
-                    ax2.plot(epochs_range, loss_history, label=label)
-                    ax2.legend()
-                    ax2.set_xlabel('epoch')
-                    ax2.set_ylabel('loss')
-                    ax2.set_title('Loss')
+                with open(results_file, 'a') as file:
+                    file.write('''\nExperiment {}/{}, Best Epoch: {}/{}, Best Loss: {:.4f}, Best Accuracy: ({:.0f}%), Final Loss: {:.4f}, Final Accuracy: ({:.0f}%), NN-Evaluations (forw./backw.): {}/{} ({:.3f}s/{:.3f}s), Par. {} Time: {:.1f}'''.format(
+                        n_exp, len(experiments)-1, best_epoch, epochs, best_loss_test,
+                        best_accuracy_test*100, losses_test[-1], accuracies_test[-1]*100,
+                        forward_evals, backward_evals, forward_time, backward_time,
+                        trainable_parameters, elapsed_time
+                    ))
+                if args.save_model:
+                    torch.save(model.state_dict(), parameter_file)
 
-                plt.suptitle(title)
-                plt.savefig(plot_file + '_{}_Epochs.png'.format(k))
+                # PLOTTIN THE RESULTS FOR ALL EXPERIMENTS IN 2 PLOTS
+                for epoch, experiment_results in experiment_result_by_epochs.items():
+                    title = 'Results for {} Epochs ({} runs)'.format(epoch, averaging_run)
+                    plt.rcParams['figure.figsize'] = (20, 10)
+                    plt.rcParams['font.size'] = 25
+                    epochs_range = np.arange(1, int(epoch) + 1, dtype=int)
+                    plt.clf()
+                    fig, (ax1, ax2) = plt.subplots(1, 2)
+                    for experiment_model, experiment in experiment_results.items():
+                        # experiment_model = experiment['NN']
+                        loss_history = np.asarray(experiment['loss']).mean(axis=0)
+                        acc_history = np.asarray(experiment['acc']).mean(axis=0)
+                        label = '{}'.format(experiment_model)
 
-            # PLOTTING THE RESULTS FOR ALL EXPERIMENTS; WEIGHT THE PERFORMANCE BY NUMBER OF #PARAMETERS
-            for k, experiment_results in experiment_result_by_epochs.items():
-                title = 'Results for {} Epochs'.format(k)
-                plt.rcParams['figure.figsize'] = (20, 10)
-                plt.rcParams['font.size'] = 25
-                epochs_range = np.arange(1, int(k) + 1, dtype=int)
-                plt.clf()
-                fig, (ax1, ax2) = plt.subplots(1, 2)
+                        ax1.plot(epochs_range, acc_history, label=label)
+                        ax1.legend()
+                        ax1.set_xlabel('epoch')
+                        ax1.set_ylabel('accuracy')
+                        ax1.set_title('Accuracy')
 
-                for experiment in experiment_results:
-                    experiment_model = experiment['NN']
-                    loss_history = experiment['loss']
-                    acc_history = experiment['acc']
-                    label = '{}'.format(experiment_model)
+                        ax2.plot(epochs_range, loss_history, label=label)
+                        ax2.legend()
+                        ax2.set_xlabel('epoch')
+                        ax2.set_ylabel('loss')
+                        ax2.set_title('Loss')
 
-                    ax1.plot(epochs_range, np.asarray(acc_history)/trainable_parameters, label=label)
-                    ax1.legend()
-                    ax1.set_xlabel('Epoch')
-                    ax1.set_ylabel('Accuracy')
-                    ax1.set_title('Accuracy per #Parameters')
+                    plt.suptitle(title)
+                    plt.savefig(plot_file + '_{}_Epochs.png'.format(epoch))
 
-                    ax2.plot(epochs_range, np.asarray(loss_history)*trainable_parameters, label=label)
-                    ax2.legend()
-                    ax2.set_xlabel('Epoch')
-                    ax2.set_ylabel('Loss')
-                    ax2.set_title('#Parameters weighted Loss')
-                plt.suptitle(title)
-                plt.savefig(plot_file + '_{}_Epochs_weighted_by_parameters.png'.format(k))
+                # PLOTTING THE RESULTS FOR ALL EXPERIMENTS; WEIGHT THE PERFORMANCE BY NUMBER OF #PARAMETERS
+                for epoch, experiment_results in experiment_result_by_epochs.items():
+                    title = 'Results for {} Epochs ({} runs)'.format(epoch, averaging_run)
+                    plt.rcParams['figure.figsize'] = (20, 10)
+                    plt.rcParams['font.size'] = 25
+                    epochs_range = np.arange(1, int(epoch) + 1, dtype=int)
+                    plt.clf()
+                    fig, (ax1, ax2) = plt.subplots(1, 2)
 
-            # Plot the Number of evaluations
-            exp_idx = 0
-            indices = []
-            forward_evals = []
-            for k, experiment_results in experiment_result_by_epochs.items():
-                for experiment in experiment_results:
-                    indices.append(exp_idx)
-                    forward_evals.append(experiment['forward_evals'])
-                    exp_idx += 1
-            evals_fig, evals_ax = plt.subplots()
-            evals_ax.bar(indices, forward_evals)
-            # ax1.legend()
-            evals_ax.set_xlabel('Experiment #')
-            evals_ax.set_ylabel('Evaluations')
-            evals_ax.set_title('Effective Forward Evaluations')
-            evals_ax.yaxis.get_major_locator().set_params(integer=True)
-            plt.savefig(plot_file + '_Evaluations.png')
+                    for experiment_model, experiment in experiment_results.items():
+                        # experiment_model = experiment['NN']
+                        loss_history = np.asarray(experiment['loss']).mean(axis=0)
+                        acc_history = np.asarray(experiment['acc']).mean(axis=0)
+                        label = '{}'.format(experiment_model)
 
-            # Plot the time
-            exp_idx = 0
-            indices = []
-            times = []
-            for k, experiment_results in experiment_result_by_epochs.items():
-                for experiment in experiment_results:
-                    indices.append(exp_idx)
-                    times.append(experiment['time'])
-                    exp_idx += 1
-            time_fig, time_ax = plt.subplots()
-            time_ax.bar(indices, times)
-            # ax1.legend()
-            time_ax.set_xlabel('Experiment #')
-            time_ax.set_ylabel('Time (s)')
-            time_ax.set_title('Time')
-            time_ax.yaxis.get_major_locator().set_params(integer=True)
-            time_fig.savefig(plot_file + '_Time.png')
+                        ax1.plot(epochs_range, np.asarray(acc_history)/trainable_parameters, label=label)
+                        ax1.legend()
+                        ax1.set_xlabel('Epoch')
+                        ax1.set_ylabel('Accuracy')
+                        ax1.set_title('Accuracy per #Parameters')
+
+                        ax2.plot(epochs_range, np.asarray(loss_history)*trainable_parameters, label=label)
+                        ax2.legend()
+                        ax2.set_xlabel('Epoch')
+                        ax2.set_ylabel('Loss')
+                        ax2.set_title('#Parameters weighted Loss')
+                    plt.suptitle(title)
+                    plt.savefig(plot_file + '_{}_Epochs_weighted_by_parameters.png'.format(epoch))
+
+                # Plot the Number of evaluations
+                exp_idx = 0
+                indices = []
+                forward_evals = []
+                for epoch, experiment_results in experiment_result_by_epochs.items():
+                    for experiment_model, experiment in experiment_results.items():
+                        indices.append(exp_idx)
+                        forward_evals.append(np.asarray(experiment['forward_evals']).mean())
+                        exp_idx += 1
+                evals_fig, evals_ax = plt.subplots()
+                evals_ax.bar(indices, forward_evals)
+                # ax1.legend()
+                evals_ax.set_xlabel('Experiment #')
+                evals_ax.set_ylabel('Evaluations')
+                evals_ax.set_title('Effective Forward Evaluations ({} runs)'.format(averaging_run))
+                evals_ax.yaxis.get_major_locator().set_params(integer=True)
+                plt.savefig(plot_file + '_Evaluations.png')
+
+                # Plot the time
+                exp_idx = 0
+                indices = []
+                times = []
+                for epoch, experiment_results in experiment_result_by_epochs.items():
+                    for experiment_model, experiment in experiment_results.items():
+                        indices.append(exp_idx)
+                        times.append(np.asarray(experiment['time']).mean())
+                        exp_idx += 1
+                time_fig, time_ax = plt.subplots()
+                time_ax.bar(indices, times)
+                # ax1.legend()
+                time_ax.set_xlabel('Experiment #')
+                time_ax.set_ylabel('Time (s)')
+                time_ax.set_title('Time ({} runs)'.format(averaging_run))
+                time_ax.yaxis.get_major_locator().set_params(integer=True)
+                time_fig.savefig(plot_file + '_Time.png')
 
     else:
 
