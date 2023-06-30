@@ -314,17 +314,23 @@ def train(model:Hybrid_FMU or Hybrid_Python,
           problem_type,
           pointers,
           residual=False,
-          plotting_reference_data={}):
+          plotting_reference_data={},
+          restore=False):
     accuracies_train = []
     losses_train = []
     accuracies_test = []
     losses_test = []
 
+    best_loss = np.inf
+
+    # if not residual:
+    #     restore=True
+
     # Optimizes the Neural Network with CBO
     optimizer = Optimizer(model, n_particles=particles, alpha=alpha, sigma=sigma,
                           l=l, dt=dt, anisotropic=anisotropic, eps=eps, partial_update=partial_update,
                           use_multiprocessing=use_multiprocessing, n_processes=processes,
-                          particles_batch_size=particles_batch_size, device=device, fmu=False, residual=residual)
+                          particles_batch_size=particles_batch_size, device=device, fmu=False, residual=residual, restore=restore)
 
     augment_model_parameters = []
 
@@ -415,6 +421,17 @@ def train(model:Hybrid_FMU or Hybrid_Python,
 
         accuracies_train.append(np.mean(accuracies_epoch_train))
         losses_train.append(np.mean(losses_epoch_train))
+
+        if epoch > 0 and losses_test[-1] < best_loss:
+            best_loss = loss_test
+            torch.save({
+                'epoch': epochs,
+                'model_state_dict': hybrid_model.state_dict(),
+                'loss': losses_train[-1],
+                'loss_test': losses_test[-1],
+                # 'residual_loss': best_experiment['residual_loss'],
+                # 'residual_loss_test': best_experiment['residual_loss_test']
+            }, os.path.join(plotting_reference_data['results_directory'], 'best_params.pt'))
 
         if epoch % eval_freq == 0:
 
@@ -563,6 +580,7 @@ def result_plot(model_name, dataset_name, plot_path,
     fig.suptitle(f'{model_name} @ {dataset_name}')
     fig.savefig(plot_path)
     plt.close(fig)
+
 def create_results_directory(directory, results_directory_name=None):
     if results_directory_name is None:
         now = datetime.datetime.now()
@@ -683,9 +701,9 @@ if __name__ == '__main__':
     parser.add_argument('--doe', type=bool, default=True, help='Whether or not to use the FMU or a python implementation')
     parser.add_argument('--residual', required=False, type=bool, default=True,
                         help='Perform Design of Experiments with NN Parameters and ODE Hyperparameters on Residuals')
-    parser.add_argument('--trajectory', required=False, type=bool, default=False,
+    parser.add_argument('--trajectory', required=False, type=bool, default=True,
                         help='Perform Design of Experiments with NN Parameters and ODE Hyperparameters on Trajectory')
-    parser.add_argument('--results_directory_name', required=False, type=str, default='plot_test',
+    parser.add_argument('--results_directory_name', required=False, type=str, default='Test 4 Best of Riedl 200',
                         help='name under which the results should be saved, like plots and such')
     parser.add_argument('--build_plot', required=False, default=True, action='store_true',
                         help='specify to build loss and accuracy plot')
@@ -717,10 +735,10 @@ if __name__ == '__main__':
 
     # GENERAL OPTIMIZER OPTIONS
     # CBO OPTIONS
-    parser.add_argument('--epochs', type=int, default=1000, help='train for EPOCHS epochs')
-    parser.add_argument('--batch_size', type=int, default=200, help='batch size (for samples-level batching)')
-    parser.add_argument('--particles', type=int, default=500, help='')
-    parser.add_argument('--particles_batch_size', type=int, default=50, help='batch size '
+    parser.add_argument('--epochs', type=int, default=2000, help='train for EPOCHS epochs')
+    parser.add_argument('--batch_size', type=int, default=60, help='batch size (for samples-level batching)')
+    parser.add_argument('--particles', type=int, default=100, help='')
+    parser.add_argument('--particles_batch_size', type=int, default=10, help='batch size '
                                                                              '(for particles-level batching)')
     parser.add_argument('--alpha', type=float, default=100.0, help='alpha from CBO dynamics')
     parser.add_argument('--sigma', type=float, default=0.1 ** 0.5, help='sigma from CBO dynamics')
@@ -798,19 +816,20 @@ if __name__ == '__main__':
             if args.residual:
                 # residual_doe_parameters = OrderedDict({'alpha': [1e0, 1e2]})
 
-                residual_doe_parameters = OrderedDict({'alpha': [1e0, 1e2],
-                                                       'sigma': [0.1**0.5, 0.4**0.5],
-                                                       'l': [1.0, 0.1],
-                                                       'dt': [0.1, 0.01],
-                                                       'particles':[200, 500],
+                residual_doe_parameters = OrderedDict({'alpha': [100],
+                                                       'sigma': [0.4**0.5],
+                                                       'l': [1.0],
+                                                       'dt': [0.1],
+                                                       'particles':[200],
+                                                       'particles_batch_size': [20],
                                                        'cooling': [False],
-                                                       'layer_size': [20, 40],
-                                                       'layers': [2, 3]})
+                                                       'layer_size': [40],
+                                                       'layers': [2]})
                 print(f'Residual DoE Parameters: {residual_doe_parameters}')
 
             if args.trajectory:
                 if args.residual:
-                    trajectory_doe_parameters = OrderedDict({'batch_size': [100, 200]})
+                    trajectory_doe_parameters = OrderedDict({'batch_size': [60, 120]})
                 else:
                     trajectory_doe_parameters = OrderedDict({'alpha': [1e0, 1e2],
                                                             'sigma': [0.1**0.5, 0.4**0.5],
@@ -963,19 +982,25 @@ if __name__ == '__main__':
                             experiment_time = time.time() - experiment_start_time
                             # print(f'Experiment time: {(time.time() - experiment_time):3.1f}s')
                             accuracies_train, accuracies_test, losses_train, losses_test = result
-                            best_loss_train = losses_train[-1]
-                            best_loss_test = losses_test[-1]
+
+                            best_param_file = os.path.join(plotting_reference_data['results_directory'], 'best_params.pt')
+                            ckpt = torch.load(best_param_file)
+                            hybrid_model.load_state_dict(ckpt['model_state_dict'])
+                            best_loss_train = ckpt['loss']
+                            best_loss_test = ckpt['loss_test']
 
                             experiment_strings[-1] = experiment_strings[-1] + f', Training loss: {best_loss_train:3.10f}, Validation loss: {best_loss_test:3.10f}, Time: {experiment_time:3.3f}'
+                            print(experiment_strings[-1])
+
                             with open(results_file, 'a') as file:
                                 file.writelines(experiment_strings[-1])
                                 file.write('\n')
 
-                            if losses_test[-1] < best_experiment['residual_loss_test']:
+                            if best_loss_test < best_experiment['residual_loss_test']:
                                 best_experiment['n_exp'] = n_exp
                                 best_experiment['setup'] = experiment
-                                best_experiment['residual_loss'] = losses_train[-1]
-                                best_experiment['residual_loss_test'] = losses_test[-1]
+                                best_experiment['residual_loss'] = best_loss_train
+                                best_experiment['residual_loss_test'] = best_loss_test
                                 best_experiment['model'] = hybrid_model
                                 best_experiment['time'] = experiment_time
 
@@ -1049,7 +1074,6 @@ if __name__ == '__main__':
                                                                                     test_dataset=test_dataset,
                                                                                     test_batch_size=args.batch_size if args.batch_size < len(test_dataset) else len(test_dataset))
 
-
                         result = train(model=hybrid_model,
                                     train_dataloader=train_dataloader,
                                     test_dataloader=test_dataloader,
@@ -1094,6 +1118,9 @@ if __name__ == '__main__':
                                 np.hstack((t_train, t_test)), np.vstack((z_ref_train, z_ref_test)))
 
                 if args.trajectory:
+                    # DOE ON TRAJECTORIES
+                    ####################################################################
+
                     # CREATE REFERENCE SOLUTION
                     z0 = np.array(args.ic)
                     reference_ode_parameters = [args.kappa, args.mu, args.mass]
@@ -1104,7 +1131,6 @@ if __name__ == '__main__':
                                                't_test': t_test,
                                                'z_ref_train': z_ref_train,
                                                'z_ref_test': z_ref_test}
-
 
                     if len(trajectory_doe_parameters) != 0:
                         # PREPARE DoE
@@ -1209,12 +1235,17 @@ if __name__ == '__main__':
                                            problem_type='regression',
                                            pointers=None,
                                            residual=False,
-                                           plotting_reference_data=plotting_reference_data)
+                                           plotting_reference_data=plotting_reference_data,
+                                           restore=True)
                             experiment_time = time.time() - experiment_start_time
                             print(f'Experiment time: {(time.time() - experiment_time):3.1f}s')
                             accuracies_train, accuracies_test, losses_train, losses_test = result
-                            best_loss_train = losses_train[-1]
-                            best_loss_test = losses_test[-1]
+
+                            best_param_file = os.path.join(plotting_reference_data['results_directory'], 'best_params.pt')
+                            ckpt = torch.load(best_param_file)
+                            hybrid_model.load_state_dict(ckpt['model_state_dict'])
+                            best_loss_train = ckpt['loss']
+                            best_loss_test = ckpt['loss_test']
 
                             experiment_strings[-1] = experiment_strings[-1] + f', Training loss: {best_loss_train:3.10f}, Validation loss: {best_loss_test:3.10f}, Time: {experiment_time:3.3f}'
                             with open(results_file, 'a') as file:
@@ -1304,6 +1335,13 @@ if __name__ == '__main__':
                                     residual=False,
                                     plotting_reference_data=plotting_reference_data)
                         print(f'Elapsed time: {time.time() - start_time} seconds')
+
+                        best_param_file = os.path.join(plotting_reference_data['results_directory'], 'best_params.pt')
+                        ckpt = torch.load(best_param_file)
+                        hybrid_model.load_state_dict(ckpt['model_state_dict'])
+                        best_loss_train = ckpt['loss']
+                        best_loss_test = ckpt['loss_test']
+
                         if args.build_plot:
                             build_plot(args.epochs, args.model, args.dataset, os.path.join(trajectory_directory, f'Loss.png'),
                                     *result)
@@ -1491,16 +1529,19 @@ if __name__ == '__main__':
                                    plotting_reference_data=plotting_reference_data)
                     experiment_time = time.time() - start_time
                     accuracies_train, accuracies_test, losses_train, losses_test = result
-                    best_loss_train = losses_train[-1]
-                    best_loss_test = losses_test[-1]
+                    best_param_file = os.path.join(plotting_reference_data['results_directory'], 'best_params.pt')
+                    ckpt = torch.load(best_param_file)
+                    hybrid_model.load_state_dict(ckpt['model_state_dict'])
+                    best_loss_train = ckpt['loss']
+                    best_loss_test = ckpt['loss_test']
 
                     torch.save({
                         'epoch': args.epochs,
                         'model_state_dict': hybrid_model.state_dict(),
                         'loss': np.inf,
                         'loss_test': np.inf,
-                        'residual_loss': losses_train[-1],
-                        'residual_loss_test': losses_test[-1]
+                        'residual_loss': ckpt['loss'],
+                        'residual_loss_test': ckpt['loss_test']
                     }, parameter_file)
 
                     experiment_setup['residual_loss'] = losses_train[-1]
@@ -1617,8 +1658,11 @@ if __name__ == '__main__':
                                 plotting_reference_data=plotting_reference_data)
                     experiment_time = time.time() - start_time
                     accuracies_train, accuracies_test, losses_train, losses_test = result
-                    best_loss_train = losses_train[-1]
-                    best_loss_test = losses_test[-1]
+                    best_param_file = os.path.join(plotting_reference_data['results_directory'], 'best_params.pt')
+                    ckpt = torch.load(best_param_file)
+                    hybrid_model.load_state_dict(ckpt['model_state_dict'])
+                    best_loss_train = ckpt['loss']
+                    best_loss_test = ckpt['loss_test']
 
                     torch.save({
                         'epoch': args.epochs,
