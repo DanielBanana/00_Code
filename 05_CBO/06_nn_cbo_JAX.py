@@ -194,6 +194,8 @@ class Hybrid_Python():
         self.t = t
         self.nn_parameters = nn_parameters
         _, self.unravel_pytree = jax.flatten_util.ravel_pytree(nn_parameters)
+        self.ravel_pytree = jax.jit(jax.flatten_util.ravel_pytree)
+        self.unravel_pytree = jax.jit(self.unravel_pytree)
         self.stim = False
         self.restore = restore
 
@@ -217,20 +219,6 @@ class Hybrid_Python():
     def set_trajectory_variables(self, z0, t):
         self.z0 = z0
         self.t = t
-
-    # def call_residual(self, input):
-    #     return self.forward_residual(input)
-
-    # def call_trajectory(self, input):
-    #     return self.forward_trajectory()
-    # def augment_model_function(self, augment_model_parameters, input):
-    #     # The augment_model is currently a pytorch model, which just takes
-    #     # the input. It has its own parameters saved internally.
-    #     # The f_euler function expects a model which needs its paramaters
-    #     # given when it is called: y = augment_model_function(parameters, input)
-    #     # f_euler provides the input to the augment_model as numpy array
-    #     # but we can only except tensors, so convert
-    #     return self.augment_model(torch.tensor(input)).detach().numpy()
 
     def forward_residual(self, input):
         return self.augment_model(self.nn_parameters, input)
@@ -272,6 +260,7 @@ class Hybrid_Python():
                                np.array((-kappa*z[0]/mass,))]).flatten()
         return derivative
 
+
     def hybrid_ode(self, z, t, ode_parameters, nn_parameters):
         '''Calculates the right hand side of the hybrid ODE, where
         the damping term is replaced by the neural network'''
@@ -294,33 +283,24 @@ class Hybrid_Python():
 
     def parameters(self):
         parameters, self.treedef = jax.tree_util.tree_flatten(self.nn_parameters)
+        # a, b = tree_flatten(self.nn_parameters)
+        # self.treedef = b
         return parameters
 
+    # @jit
     def parameters_flat(self):
-        parameters, self.unravel_pytree = jax.flatten_util.ravel_pytree(self.nn_parameters)
+        parameters, _ = jax.flatten_util.ravel_pytree(self.nn_parameters)
         return parameters
 
+    # @jit
     def set_parameters(self, parameters):
-        if type(parameters) is list:
-            self.nn_parameters = jax.tree_util.tree_unflatten(self.treedef, parameters)
-        else:
-            self.nn_parameters = self.unravel_pytree(parameters)
+        self.nn_parameters = jax.tree_util.tree_unflatten(self.treedef, parameters)
 
-        # else:
-        #     print('Parameter format not recognised in set_parameters')
-        #     exit(1)
+    # @jit
+    def set_parameters_flat(self, parameters):
 
-# class Hybrid_Python_Residual(nn.Module):
-#     def __init__(self, augment_model, z0, t):
-#         super(Hybrid_Python_Residual, self).__init__()
-
-#         self.ode_parameters = [1.0, 8.53, 1.0]
-#         self.augment_model = augment_model
-#         self.z0 = z0
-#         self.t = t
-
-#     def forward(self, input):
-#         return augment_model(input)
+        self.nn_parameters = self.unravel_pytree(parameters)
+        # self.nn_parameters = self.unravel_pytree(parameters)
 
 # For calculation of the reference solution we need the correct behaviour of the VdP
 def damping(mu, inputs):
@@ -368,11 +348,13 @@ def train(model:Hybrid_FMU or Hybrid_Python,
     best_epoch = 0
     best_parameters = model.nn_parameters
 
+    start_opt_setup = time.time()
     # Optimizes the Neural Network with CBO
     optimizer = Optimizer(model, n_particles=particles, alpha=alpha, sigma=sigma,
                           l=l, dt=dt, anisotropic=anisotropic, eps=eps, partial_update=partial_update,
                           use_multiprocessing=use_multiprocessing, n_processes=processes,
                           particles_batch_size=particles_batch_size, device=device, fmu=False, residual=residual)
+    print(f'time for optimizer setup: {time.time()-start_opt_setup}')
 
     if problem_type == 'classification':
         raise NotImplementedError('No classification loss currently available')
@@ -384,12 +366,14 @@ def train(model:Hybrid_FMU or Hybrid_Python,
     n_batches = len(train_dataloader)
 
     for epoch in range(epochs):
+        start_epoch = time.time()
         accuracies_epoch_train = []
         losses_epoch_train = []
+        time_train_evals = []
+        time_optimizer_steps = []
         for batch, (input_train, output_train) in enumerate(train_dataloader):
             # input_train, output_train = input_train.to(device), output_train.to(device)
-            input_train, output_train = jnp.array(input_train), jnp.array(output_train)
-
+            input_train, output_train = np.array(input_train), np.array(output_train)
 
             # If we calculate on the residual the inputs are the states of the ODE
             # e.g. location and velocity for Van der Pol. The outputs are the residuals
@@ -400,9 +384,12 @@ def train(model:Hybrid_FMU or Hybrid_Python,
                 raise NotImplementedError('Evaluation function for classification not implemented')
 
             if isinstance(model, Hybrid_FMU):
-                pred_train = jnp.array(model(pointers))
+                pred_train = np.array(model(pointers))
             else:
-                pred_train = jnp.array(model(input_train))
+                start_pred = time.time()
+                pred_train = np.array(model(input_train))
+                time_train_eval = time.time() - start_pred
+                time_train_evals.append(time_train_eval)
 
 
             # loss_train = _evaluate_reg(pred_train, output_train, F.mse_loss).cpu()
@@ -414,9 +401,10 @@ def train(model:Hybrid_FMU or Hybrid_Python,
 
             # optimizer.zero_grad()
             loss_fn.backward(input_train, output_train, backward_gradients=False)
-            # start = time.time()
+            start = time.time()
             optimizer.step()
-            # print(f'optimizer.step: {time.time() - start}')
+            time_optimizer_step = time.time() - start
+            time_optimizer_steps.append(time_optimizer_step)
 
             # Evaluate test set
             # with torch.no_grad():
@@ -424,7 +412,7 @@ def train(model:Hybrid_FMU or Hybrid_Python,
             accuracies = []
             for input_test, output_test in test_dataloader:
                 # input_test, output_test = input_test.to(device), output_test.to(device)
-                input_test, output_test = jnp.array(input_test), jnp.array(output_test)
+                input_test, output_test = np.array(input_test), np.array(output_test)
 
                 if problem_type == 'classification':
 
@@ -432,9 +420,9 @@ def train(model:Hybrid_FMU or Hybrid_Python,
                     raise NotImplementedError('Evaluation function for classification not implemented')
 
                 if isinstance(model, Hybrid_FMU):
-                    pred_test = jnp.array(model(pointers))
+                    pred_test = np.array(model(pointers))
                 else:
-                    pred_test = jnp.array(model(input_test))
+                    pred_test = np.array(model(input_test))
 
                 loss = _evaluate_reg(pred_test, output_test, mse_loss)
                 acc = 0.0
@@ -457,23 +445,19 @@ def train(model:Hybrid_FMU or Hybrid_Python,
             # checkpoint_manager.save(epoch, nn_parameters, save_kwargs={'save_args': save_args})
 
         if epoch % checkpoint_interval == 0:
-            # t_train = plotting_reference_data['t_train']
-            # t_test = plotting_reference_data['t_test']
-            # z_ref_train = plotting_reference_data['z_ref_train']
-            # z_ref_test = plotting_reference_data['z_ref_test']
             input_trajectory_train = plotting_reference_data['input_trajectory_train']
             input_trajectory_test = plotting_reference_data['input_trajectory_test']
             results_directory = plotting_reference_data['plot_directory']
 
             model.trajectory_mode()
-            # model.set_trajectory_variables(z0=z_ref_train[0], t=t_train)
+
             if isinstance(model, Hybrid_FMU):
-                pred_train = jnp.array(model(pointers))
+                pred_train = np.array(model(pointers))
             else:
                 pred_train = model(input_trajectory_train)
-            # model.set_trajectory_variables(z0=z_ref_test[0], t=t_test)
+
             if isinstance(model, Hybrid_FMU):
-                pred_test = jnp.array(model(pointers))
+                pred_test = np.array(model(pointers))
             else:
                 pred_test = model(input_trajectory_test)
 
@@ -497,6 +481,16 @@ def train(model:Hybrid_FMU or Hybrid_Python,
             accuracies_train = accuracies_train + [np.inf]*(epochs-epoch-1)
             accuracies_test = accuracies_test + [np.inf]*(epochs-epoch-1)
             break
+
+        time_epoch = time.time() - start_epoch
+        time_optimizer_step_mean = np.mean(np.array(time_optimizer_steps))
+        time_train_evals_mean = np.mean(np.array(time_train_evals))
+        print(f'time for a full epoch: {time_epoch}')
+        print(f'number of sample batches: {n_batches}')
+        print(f'time for a optimizer step: {time_optimizer_step_mean}')
+        print(f'time for a evluation of the model: {time_train_evals_mean}')
+
+
 
     return accuracies_train, accuracies_test, losses_train, losses_test, best_epoch, best_parameters
 
@@ -829,7 +823,7 @@ if __name__ == '__main__':
                         help='Perform Design of Experiments with NN Parameters and ODE Hyperparameters on Residuals')
     parser.add_argument('--trajectory', required=False, type=bool, default=True,
                         help='Perform Design of Experiments with NN Parameters and ODE Hyperparameters on Trajectory')
-    parser.add_argument('--results_directory_name', required=False, type=str, default='plot_test',
+    parser.add_argument('--results_directory_name', required=False, type=str, default='Riedl 200 Particles JAX',
                         help='name under which the results should be saved, like plots and such')
     parser.add_argument('--build_plot', required=False, default=True, action='store_true',
                         help='specify to build loss and accuracy plot')
@@ -841,8 +835,8 @@ if __name__ == '__main__':
 
     # GENERAL ODE OPTIONS
     parser.add_argument('--start', type=float, default=0.0, help='Start value of the ODE integration')
-    parser.add_argument('--end', type=float, default=1.0, help='End value of the ODE integration')
-    parser.add_argument('--n_steps', type=float, default=101, help='How many integration steps to perform')
+    parser.add_argument('--end', type=float, default=10.0, help='End value of the ODE integration')
+    parser.add_argument('--n_steps', type=float, default=2001, help='How many integration steps to perform')
     parser.add_argument('--ic', type=list, default=[1.0, 0.0], help='initial_condition of the ODE')
     parser.add_argument('--aug_state', type=bool, default=False, help='Whether or not to use the augemented state for the ODE dynamics')
     parser.add_argument('--aug_dim', type=int, default=4, help='Number of augment dimensions')
@@ -861,10 +855,10 @@ if __name__ == '__main__':
 
     # GENERAL OPTIMIZER OPTIONS
     # CBO OPTIONS
-    parser.add_argument('--epochs', type=int, default=10, help='train for EPOCHS epochs')
+    parser.add_argument('--epochs', type=int, default=100, help='train for EPOCHS epochs')
     parser.add_argument('--batch_size', type=int, default=100, help='batch size (for samples-level batching)')
-    parser.add_argument('--particles', type=int, default=10, help='')
-    parser.add_argument('--particles_batch_size', type=int, default=5, help='batch size '
+    parser.add_argument('--particles', type=int, default=100, help='')
+    parser.add_argument('--particles_batch_size', type=int, default=10, help='batch size '
                                                                              '(for particles-level batching)')
     parser.add_argument('--alpha', type=float, default=100.0, help='alpha from CBO dynamics')
     parser.add_argument('--sigma', type=float, default=0.1 ** 0.5, help='sigma from CBO dynamics')
@@ -993,16 +987,16 @@ if __name__ == '__main__':
             # DoE Parameters
 
             if args.residual:
-                residual_doe_parameters = OrderedDict({'alpha': [1e0, 1e2]})
+                # residual_doe_parameters = OrderedDict({'alpha': [1e0, 1e2]})
 
-                # residual_doe_parameters = OrderedDict({'alpha': [1e0, 1e2],
-                #                                        'sigma': [0.1**0.5, 0.4**0.5],
-                #                                        'l': [1.0, 0.1],
-                #                                        'dt': [0.1, 0.01],
-                #                                        'particles':[200, 500],
-                #                                        'cooling': [False],
-                #                                        'layer_size': [20, 40],
-                #                                        'layers': [2, 3]})
+                residual_doe_parameters = OrderedDict({'alpha': [1, 100],
+                                                       'sigma': [0.1**0.5, 0.4**0.5],
+                                                       'l': [1.0, 0.1],
+                                                       'dt': [0.1, 0.01],
+                                                       'particles':[200],
+                                                       'cooling': [False],
+                                                       'layer_size': [40],
+                                                       'layers': [2]})
                 print(f'Residual DoE Parameters: {residual_doe_parameters}')
 
             if args.trajectory:
