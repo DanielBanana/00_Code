@@ -1,8 +1,0 @@
-loss: 1.5160509363850163
-n_exp: 18
-setup:
-  l_size: 40
-  lambda: 0.0
-  layers: 1
-time: 179.1051619052887
-val_loss: 0.002941674912356429
