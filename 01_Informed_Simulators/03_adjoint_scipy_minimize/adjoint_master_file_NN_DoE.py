@@ -591,9 +591,20 @@ def create_results_subdirectories(results_directory, a=False, r=False, c=True):
 
 def create_checkpoint_manager(checkpoint_directory, max_to_keep=1, create=True):
     orbax_checkpointer = orbax.checkpoint.PyTreeCheckpointer()
-    options = orbax.checkpoint.CheckpointManagerOptions(max_to_keep=5, create=True)
+    options = orbax.checkpoint.CheckpointManagerOptions(max_to_keep=max_to_keep, create=create)
     checkpoint_manager = orbax.checkpoint.CheckpointManager(checkpoint_directory, orbax_checkpointer, options)
     return checkpoint_manager
+
+def restore_run(directory):
+    checkpoint_manager = create_checkpoint_manager(directory, max_to_keep=1)
+    step = nn_parameters = checkpoint_manager.latest_step()
+    nn_parameters = checkpoint_manager.restore(step)
+    return nn_parameters
+
+def save_run(nn_parameters, index, directory, max_to_keep):
+    checkpoint_manager = create_checkpoint_manager(checkpoint_directory=directory, max_to_keep=max_to_keep)
+    save_args = orbax_utils.save_args_from_target(nn_parameters)
+    checkpoint_manager.save(index, nn_parameters, save_kwargs={'save_args': save_args})
 
 def post_processing(z0, t, z_ref, z0_val, t_val, z_ref_val, reference_ode_parameters, directory, optimizer_args):
     nn_parameters = optimizer_args['saved_nn_parameters']
@@ -998,6 +1009,9 @@ if __name__ == '__main__':
         if args.doe_trajectory:
             if args.doe_residual:
                 # Restore parameters of residual run
+
+
+
                 checkpoint_manager = create_checkpoint_manager(checkpoint_directory=best_experiment_checkpoint_directory,
                                                                max_to_keep=1)
                 step = checkpoint_manager.latest_step()
