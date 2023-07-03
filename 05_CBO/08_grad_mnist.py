@@ -281,22 +281,10 @@ if __name__ == '__main__':
 
     parser.add_argument('--epochs', type=int, default=3, help='train for EPOCHS epochs')
     parser.add_argument('--batch_size', type=int, default=60, help='batch size (for samples-level batching)')
-    # parser.add_argument('--particles', type=int, default=100, help='')
-    # parser.add_argument('--particles_batch_size', type=int, default=10, help='batch size '
-    #                                                                          '(for particles-level batching)')
-
-    # parser.add_argument('--alpha', type=float, default=50, help='alpha from CBO dynamics')
-    # parser.add_argument('--sigma', type=float, default=0.4 ** 0.5, help='sigma from CBO dynamics')
-    # parser.add_argument('--l', type=float, default=1, help='lambda from CBO dynamics')
     parser.add_argument('--lr', type=float, default=1.0, metavar='LR',
                         help='learning rate (default: 1.0)')
     parser.add_argument('--gamma', type=float, default=0.7, metavar='M',
                         help='Learning rate step gamma (default: 0.7)')
-    # parser.add_argument('--anisotropic', type=bool, default=True, help='whether to use anisotropic or not')
-    # parser.add_argument('--eps', type=float, default=1e-5, help='threshold for additional random shift')
-    # parser.add_argument('--partial_update', type=bool, default=True, help='whether to use partial or full update')
-    # parser.add_argument('--cooling', type=bool, default=False, help='whether to apply cooling strategy')
-
 
     parser.add_argument('--build_plot', required=False, action='store_true',
                         help='specify to build loss and accuracy plot')
@@ -307,30 +295,30 @@ if __name__ == '__main__':
                                                                      'samples-level batches')
     parser.add_argument('--save-model', action='store_true', default=True,
                         help='For Saving the current Model')
-    parser.add_argument('--results_directory_name', required=False, type=str, default='grad_mnist',
+    parser.add_argument('--results_directory_name', required=False, type=str, default='GRAD_MNIST_RESULTS',
                         help='name under which the results should be saved, like plots and such')
     parser.add_argument('--n_runs', type=int, default=10,
                         help='DoE Parameter; how often each configuration should be run to compute an average')
 
     doe = True
+    compiled = False
 
     args = parser.parse_args()
     args.build_plot=True
     warnings.filterwarnings('ignore')
 
-    path = os.path.abspath(__file__)
-    directory = os.path.sep.join(path.split(os.path.sep)[:-1])
-    file_path = get_file_path(path)
+    if compiled:
+        directory = os.getcwd()
+    else:
+        path = os.path.abspath(__file__)
+        directory = os.path.sep.join(path.split(os.path.sep)[:-1])
+        file_path = get_file_path(path)
     results_directory = create_results_directory(directory=directory, results_directory_name=args.results_directory_name)
 
     # Code inspired by https://github.com/pytorch/examples/blob/main/mnist/main.py#L114
 
-
     train_dataloader, test_dataloader = DATASETS[args.dataset](train_batch_size=args.batch_size,
                                                                test_batch_size=1000)
-
-    # train_dataset, test_dataset = get_mnist_dataset()
-    # train_dataloader, test_dataloader = load_generic_dataloaders(train_dataset, args.batch_size, test_dataset, test_batch_size=1000)
 
     if args.dataset == 'PARABOLA':
         problem_type = 'regression'
@@ -338,10 +326,6 @@ if __name__ == '__main__':
         problem_type = 'classification'
     else:
         problem_type = 'classification'
-
-
-    # x_ref = torch.Tensor(np.arange(-5, 5, 0.05)).reshape(-1,1)
-    # y_ref = f(x_ref)
 
     device = args.device
     if args.device == 'cuda' and not torch.cuda.is_available():
@@ -385,11 +369,11 @@ if __name__ == '__main__':
                 nn_model = experiment['models']
                 epochs = experiment['epochs']
                 model = MODELS[nn_model]()
-                print(f'Training {nn_model} @ {args.dataset}')
+                print(f'Training {nn_model} @ {args.dataset} (Run {averaging_run})')
                 forward_evals, backward_evals = number_of_nn_evaluations(len(train_dataloader),
                                                     epochs)
-                print(f'Number of forward NN evaluations: {forward_evals}')
-                print(f'Number of backward NN evaluations: {backward_evals}')
+                # print(f'Number of forward NN evaluations: {forward_evals}')
+                # print(f'Number of backward NN evaluations: {backward_evals}')
                 trainable_parameters = sum(p.numel() for p in model.parameters() if p.requires_grad)
 
                 experiment_directory = create_experiment_directory(results_directory, n_exp)
@@ -538,7 +522,6 @@ if __name__ == '__main__':
                 time_fig.savefig(plot_file + '_Time.png')
 
     else:
-
         model = MODELS[args.model]()
 
         print(f'Training {args.model} @ {args.dataset}')
