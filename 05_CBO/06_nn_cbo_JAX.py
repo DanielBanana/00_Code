@@ -36,6 +36,8 @@ import datetime
 import orbax
 from flax.training import orbax_utils
 
+from utils import build_plot, result_plot, create_results_directory, create_doe_experiments, create_experiment_directory
+
 MODELS = {
     # 'SimpleMLP': SimpleMLP,
     'TinyMLP': TinyMLP,
@@ -533,88 +535,87 @@ def f_step(prev_z, i, t, ode_parameters):
     next_z = prev_z + dt * ode(prev_z, t[i], ode_parameters)
     return next_z, next_z
 
-def build_plot(epochs, model_name, dataset_name, plot_path,
-               train_acc, test_acc, loss_train, loss_test):
-    plt.rcParams['figure.figsize'] = (20, 10)
-    plt.rcParams['font.size'] = 25
+# def build_plot(epochs, model_name, dataset_name, plot_path,
+#                train_acc, test_acc, loss_train, loss_test):
+#     plt.rcParams['figure.figsize'] = (20, 10)
+#     plt.rcParams['font.size'] = 25
 
-    epochs_range = np.arange(1, epochs + 1, dtype=int)
+#     epochs_range = np.arange(1, epochs + 1, dtype=int)
 
-    # plt.clf()
-    fig, (ax1, ax2) = plt.subplots(1, 2)
+#     # plt.clf()
+#     fig, (ax1, ax2) = plt.subplots(1, 2)
 
-    ax1.plot(epochs_range, train_acc, label='train')
-    ax1.plot(epochs_range, test_acc, label='test')
-    ax1.legend()
-    ax1.set_xlabel('epoch')
-    ax1.set_ylabel('accuracy')
-    ax1.set_title('Accuracy')
+#     ax1.plot(epochs_range, train_acc, label='train')
+#     ax1.plot(epochs_range, test_acc, label='test')
+#     ax1.legend()
+#     ax1.set_xlabel('epoch')
+#     ax1.set_ylabel('accuracy')
+#     ax1.set_title('Accuracy')
 
-    ax2.plot(epochs_range, loss_train, label='train')
-    ax2.plot(epochs_range, loss_test, label='test')
-    ax2.legend()
-    ax2.set_xlabel('epoch')
-    ax2.set_ylabel('loss')
-    ax2.set_title('Loss')
+#     ax2.plot(epochs_range, loss_train, label='train')
+#     ax2.plot(epochs_range, loss_test, label='test')
+#     ax2.legend()
+#     ax2.set_xlabel('epoch')
+#     ax2.set_ylabel('loss')
+#     ax2.set_title('Loss')
 
-    fig.suptitle(f'{model_name} @ {dataset_name}')
-    fig.savefig(plot_path)
-    plt.close(fig)
+#     fig.suptitle(f'{model_name} @ {dataset_name}')
+#     fig.savefig(plot_path)
+#     plt.close(fig)
 
+# def result_plot(model_name, dataset_name, plot_path,
+#                 input_train, output_train, input_test, output_test, input_reference, output_reference, scatter=False):
+#     plt.rcParams['figure.figsize'] = (20, 10)
+#     plt.rcParams['font.size'] = 25
 
-def result_plot(model_name, dataset_name, plot_path,
-                input_train, output_train, input_test, output_test, input_reference, output_reference, scatter=False):
-    plt.rcParams['figure.figsize'] = (20, 10)
-    plt.rcParams['font.size'] = 25
+#     # Get the dimensions of the output
+#     output_dims = output_train.shape[1]
 
-    # Get the dimensions of the output
-    output_dims = output_train.shape[1]
+#     fig, axes = plt.subplots(output_dims, 2)
 
-    fig, axes = plt.subplots(output_dims, 2)
+#     for out_dim in range(output_dims):
 
-    for out_dim in range(output_dims):
+#         axes[out_dim, 0].plot(input_reference, output_reference[:,out_dim], label='Reference')
+#         if scatter:
+#             axes[out_dim, 0].scatter(input_train, output_train[:,out_dim], label='Prediction')
+#         else:
+#             axes[out_dim, 0].plot(input_train, output_train[:,out_dim], label='Prediction')
+#         axes[out_dim, 0].legend()
+#         axes[out_dim, 0].set_xlabel('X')
+#         axes[out_dim, 0].set_ylabel('y')
+#         axes[out_dim, 0].set_title(f'Variable {out_dim+1} - Train')
 
-        axes[out_dim, 0].plot(input_reference, output_reference[:,out_dim], label='Reference')
-        if scatter:
-            axes[out_dim, 0].scatter(input_train, output_train[:,out_dim], label='Prediction')
-        else:
-            axes[out_dim, 0].plot(input_train, output_train[:,out_dim], label='Prediction')
-        axes[out_dim, 0].legend()
-        axes[out_dim, 0].set_xlabel('X')
-        axes[out_dim, 0].set_ylabel('y')
-        axes[out_dim, 0].set_title(f'Variable {out_dim+1} - Train')
+#         axes[out_dim, 1].plot(input_reference, output_reference[:,out_dim], label='Reference')
+#         if scatter:
+#             axes[out_dim, 1].scatter(input_test, output_test[:,out_dim], label='Prediction')
+#         else:
+#             axes[out_dim, 1].plot(input_test, output_test[:,out_dim], label='Prediction')
+#         axes[out_dim, 1].legend()
+#         axes[out_dim, 1].set_xlabel('X')
+#         axes[out_dim, 1].set_ylabel('y')
+#         axes[out_dim, 1].set_title(f'Variable {out_dim+1} - Test')
 
-        axes[out_dim, 1].plot(input_reference, output_reference[:,out_dim], label='Reference')
-        if scatter:
-            axes[out_dim, 1].scatter(input_test, output_test[:,out_dim], label='Prediction')
-        else:
-            axes[out_dim, 1].plot(input_test, output_test[:,out_dim], label='Prediction')
-        axes[out_dim, 1].legend()
-        axes[out_dim, 1].set_xlabel('X')
-        axes[out_dim, 1].set_ylabel('y')
-        axes[out_dim, 1].set_title(f'Variable {out_dim+1} - Test')
+#     fig.tight_layout()
+#     fig.suptitle(f'{model_name} @ {dataset_name}')
+#     fig.savefig(plot_path)
+#     plt.close(fig)
 
-    fig.tight_layout()
-    fig.suptitle(f'{model_name} @ {dataset_name}')
-    fig.savefig(plot_path)
-    plt.close(fig)
-
-def create_results_directory(directory, results_directory_name=None):
-    if results_directory_name is None:
-        now = datetime.datetime.now()
-        doe_date = '-'.join([str(now.year), str(now.month), str(now.day)]) + '_' + '-'.join([str(now.hour), str(now.minute)])
-        doe_directory = os.path.join(directory, doe_date)
-    else:
-        doe_directory = os.path.join(directory, results_directory_name)
-        if not os.path.exists(doe_directory):
-            os.mkdir(doe_directory)
-        else:
-            count = 1
-            while os.path.exists(doe_directory):
-                doe_directory = os.path.join(directory, results_directory_name + f'_{count}')
-                count += 1
-            os.mkdir(doe_directory)
-    return doe_directory
+# def create_results_directory(directory, results_directory_name=None):
+#     if results_directory_name is None:
+#         now = datetime.datetime.now()
+#         doe_date = '-'.join([str(now.year), str(now.month), str(now.day)]) + '_' + '-'.join([str(now.hour), str(now.minute)])
+#         doe_directory = os.path.join(directory, doe_date)
+#     else:
+#         doe_directory = os.path.join(directory, results_directory_name)
+#         if not os.path.exists(doe_directory):
+#             os.mkdir(doe_directory)
+#         else:
+#             count = 1
+#             while os.path.exists(doe_directory):
+#                 doe_directory = os.path.join(directory, results_directory_name + f'_{count}')
+#                 count += 1
+#             os.mkdir(doe_directory)
+#     return doe_directory
 
 def create_results_subdirectories(results_directory, trajectory=False, residual=False, checkpoint=True):
     return_directories = []
@@ -639,15 +640,12 @@ def create_results_subdirectories(results_directory, trajectory=False, residual=
     return tuple(return_directories)
 
 def create_results_subdirectories_(results_directory):
-
     plots_directory = os.path.join(results_directory, 'plots')
     if not os.path.exists(plots_directory):
         os.mkdir(plots_directory)
-
     checkpoint_directory = os.path.join(results_directory, 'ckpt')
     if not os.path.exists(checkpoint_directory):
         os.mkdir(checkpoint_directory)
-
     return plots_directory, checkpoint_directory
 
 def create_reference_solution(start, end, n_steps, z0, reference_ode_parameters, ode_integrator):
@@ -676,26 +674,26 @@ def create_residual_reference_solution(t_train, z_ref_train, t_test, z_ref_test,
 
     return input_residual_train, output_residual_train, input_residual_test, output_residual_test
 
-def create_doe_experiments(doe_parameters, method='fullfact'):
-    levels = [len(val) for val in doe_parameters.values()]
-    if method == 'fullfact':
-        doe = fullfact(levels)
-    else:
-        print('Method not supported, using fullfact')
-        doe = fullfact(levels)
-    experiments = []
-    for experiment in doe:
-        experiment_dict = {}
-        for i, key in enumerate(doe_parameters.keys()):
-            experiment_dict[key] = doe_parameters[key][int(experiment[i])]
-        experiments.append(experiment_dict)
-    return tuple(experiments)
+# def create_doe_experiments(doe_parameters, method='fullfact'):
+#     levels = [len(val) for val in doe_parameters.values()]
+#     if method == 'fullfact':
+#         doe = fullfact(levels)
+#     else:
+#         print('Method not supported, using fullfact')
+#         doe = fullfact(levels)
+#     experiments = []
+#     for experiment in doe:
+#         experiment_dict = {}
+#         for i, key in enumerate(doe_parameters.keys()):
+#             experiment_dict[key] = doe_parameters[key][int(experiment[i])]
+#         experiments.append(experiment_dict)
+#     return tuple(experiments)
 
-def create_experiment_directory(doe_directory, name):
-    experiment_directory = os.path.join(doe_directory, f'Experiment {name}')
-    if not os.path.exists(experiment_directory):
-        os.mkdir(experiment_directory)
-    return experiment_directory
+# def create_experiment_directory(doe_directory, name):
+#     experiment_directory = os.path.join(doe_directory, f'Experiment {name}')
+#     if not os.path.exists(experiment_directory):
+#         os.mkdir(experiment_directory)
+#     return experiment_directory
 
 def create_clean_mini_batch(n_mini_batches, x_ref, t):
     n_timesteps = t.shape[0]

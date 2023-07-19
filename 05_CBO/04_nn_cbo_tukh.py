@@ -17,6 +17,8 @@ from cbo_in_python.src.torch_.optimizer import Optimizer
 from cbo_in_python.src.torch_.loss import Loss
 from torch.utils.data import Dataset, DataLoader
 
+from utils import build_plot, result_plot
+
 MODELS = {
     'SimpleMLP': SimpleMLP,
     'TinyMLP': TinyMLP,
@@ -57,7 +59,6 @@ class Hybrid(nn.Module):
         self.z0 = z0
         self.t = t
 
-
     def augment_model_function(self, augment_model_parameters, input):
         # The augment_model is currently a pytorch model, which just takes
         # the input. It has its own parameters saved internally.
@@ -66,8 +67,6 @@ class Hybrid(nn.Module):
         # f_euler provides the input to the augment_model as numpy array
         # but we can only except tensors, so convert
         return self.augment_model(torch.tensor(input)).detach().numpy()
-
-
 
     def forward(self, pointers):
         '''Applies euler to the VdP ODE by calling the fmu; returns the trajectory'''
@@ -211,57 +210,56 @@ def f_euler(z0, t, fmu_evaluator: FMUEvaluator, model, model_parameters, pointer
 
     return z
 
+# def build_plot(epochs, model_name, dataset_name, plot_path,
+#                train_acc, test_acc, train_loss, test_loss):
+#     plt.rcParams['figure.figsize'] = (20, 10)
+#     plt.rcParams['font.size'] = 25
 
-def build_plot(epochs, model_name, dataset_name, plot_path,
-               train_acc, test_acc, train_loss, test_loss):
-    plt.rcParams['figure.figsize'] = (20, 10)
-    plt.rcParams['font.size'] = 25
+#     epochs_range = np.arange(1, epochs + 1, dtype=int)
 
-    epochs_range = np.arange(1, epochs + 1, dtype=int)
+#     plt.clf()
+#     fig, (ax1, ax2) = plt.subplots(1, 2)
 
-    plt.clf()
-    fig, (ax1, ax2) = plt.subplots(1, 2)
+#     ax1.plot(epochs_range, train_acc, label='train')
+#     ax1.plot(epochs_range, test_acc, label='test')
+#     ax1.legend()
+#     ax1.set_xlabel('epoch')
+#     ax1.set_ylabel('accuracy')
+#     ax1.set_title('Accuracy')
 
-    ax1.plot(epochs_range, train_acc, label='train')
-    ax1.plot(epochs_range, test_acc, label='test')
-    ax1.legend()
-    ax1.set_xlabel('epoch')
-    ax1.set_ylabel('accuracy')
-    ax1.set_title('Accuracy')
+#     ax2.plot(epochs_range, train_loss, label='train')
+#     ax2.plot(epochs_range, test_loss, label='test')
+#     ax2.legend()
+#     ax2.set_xlabel('epoch')
+#     ax2.set_ylabel('loss')
+#     ax2.set_title('Loss')
 
-    ax2.plot(epochs_range, train_loss, label='train')
-    ax2.plot(epochs_range, test_loss, label='test')
-    ax2.legend()
-    ax2.set_xlabel('epoch')
-    ax2.set_ylabel('loss')
-    ax2.set_title('Loss')
+#     plt.suptitle(f'{model_name} @ {dataset_name}')
+#     plt.savefig(plot_path)
 
-    plt.suptitle(f'{model_name} @ {dataset_name}')
-    plt.savefig(plot_path)
+# def result_plot(model_name, dataset_name, plot_path,
+#                 X_train, y_train, X_test, y_test, X_reference, y_reference):
+#     plt.rcParams['figure.figsize'] = (20, 10)
+#     plt.rcParams['font.size'] = 25
 
-def result_plot(model_name, dataset_name, plot_path,
-                X_train, y_train, X_test, y_test, X_reference, y_reference):
-    plt.rcParams['figure.figsize'] = (20, 10)
-    plt.rcParams['font.size'] = 25
+#     fig, (ax1, ax2) = plt.subplots(1, 2)
 
-    fig, (ax1, ax2) = plt.subplots(1, 2)
+#     ax1.plot(X_reference, y_reference, label='ref')
+#     ax1.scatter(X_train, y_train, label='train')
+#     ax1.legend()
+#     ax1.set_xlabel('X')
+#     ax1.set_ylabel('y')
+#     ax1.set_title('Train')
 
-    ax1.plot(X_reference, y_reference, label='ref')
-    ax1.scatter(X_train, y_train, label='train')
-    ax1.legend()
-    ax1.set_xlabel('X')
-    ax1.set_ylabel('y')
-    ax1.set_title('Train')
+#     ax2.plot(X_reference, y_reference, label='ref')
+#     ax2.scatter(X_test, y_test, label='test')
+#     ax2.legend()
+#     ax2.set_xlabel('X')
+#     ax2.set_ylabel('y')
+#     ax2.set_title('Test')
 
-    ax2.plot(X_reference, y_reference, label='ref')
-    ax2.scatter(X_test, y_test, label='test')
-    ax2.legend()
-    ax2.set_xlabel('X')
-    ax2.set_ylabel('y')
-    ax2.set_title('Test')
-
-    plt.suptitle(f'{model_name} @ {dataset_name}')
-    plt.savefig(plot_path)
+#     plt.suptitle(f'{model_name} @ {dataset_name}')
+#     plt.savefig(plot_path)
 
 
 if __name__ == '__main__':
