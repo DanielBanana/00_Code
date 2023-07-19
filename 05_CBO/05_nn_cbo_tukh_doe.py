@@ -396,30 +396,25 @@ def train(model:Hybrid_FMU or Hybrid_Python,
                     epoch, batch_idx * len(input_train), len(train_dataloader.dataset),
                     100. * batch_idx / len(train_dataloader), loss_train.item()))
 
-        t_train = plotting_reference_data['t_train']
-        t_test = plotting_reference_data['t_test']
-        z_ref_train = plotting_reference_data['z_ref_train']
-        z_ref_test = plotting_reference_data['z_ref_test']
-
         if residual:
             if problem_type == 'classification':
                 # loss_train, train_acc = _evaluate_class(model, X, y, F.nll_loss)
                 pass
             else:
-                pred_train_whole_trajectory = model(z_ref_train)
+                pred_train_whole_trajectory = model(train_dataloader.dataset.x)
         else:
-            model.t = t_train.detach().numpy()
-            model.z0 = z_ref_train[0]
+            model.t = train_dataloader.dataset.x
+            model.z0 = train_dataloader.dataset.y[0]
             if isinstance(model, Hybrid_FMU):
                 pred_train_whole_trajectory = torch.tensor(model(pointers))
             else:
                 pred_train_whole_trajectory = torch.tensor(model(stim=False))
-
-        loss_whole_trajectory = _evaluate_reg(pred_train_whole_trajectory, z_ref_train, F.mse_loss).cpu()
+        loss_whole_trajectory = _evaluate_reg(pred_train_whole_trajectory, train_dataloader.dataset.y, F.mse_loss).cpu()
 
         if run_file is not None:
             with open(run_file, 'a') as file:
-                file.write('\nTrain Epoch: {} \tLoss: {:.6f}'.format(epoch, loss_whole_trajectory.item()))
+                file.write('\nEpoch: {} \tTrain Loss: {:.6f}'.format(epoch, loss_whole_trajectory.item()))
+        print('\nEpoch: {} \tTrain Loss: {:.6f}'.format(epoch, loss_whole_trajectory.item()))
 
         # Evaluate test set
         with torch.no_grad():
@@ -452,10 +447,26 @@ def train(model:Hybrid_FMU or Hybrid_Python,
                 accuracies_test.append(acc_test)
                 losses_test.append(loss_test)
 
-        print('\nTest set: Average loss: {:.4f}, Accuracy: ({:.0f}%)\n'.format(loss_test, acc_test*100))
+        if residual:
+            if problem_type == 'classification':
+                # loss_train, train_acc = _evaluate_class(model, X, y, F.nll_loss)
+                pass
+            else:
+                pred_test_whole_trajectory = model(test_dataloader.dataset.x)
+        else:
+            model.t = test_dataloader.dataset.x
+            model.z0 = test_dataloader.dataset.y[0]
+            if isinstance(model, Hybrid_FMU):
+                pred_test_whole_trajectory = torch.tensor(model(pointers))
+            else:
+                pred_test_whole_trajectory = torch.tensor(model(stim=False))
+        loss_whole_trajectory = _evaluate_reg(pred_test_whole_trajectory, test_dataloader.dataset.y, F.mse_loss).cpu()
+        print('\nEpoch: {} \tTest Loss: {:.6f}'.format(epoch, loss_whole_trajectory.item()))
+
+        # print('\nTest set: Average loss: {:.4f}, Accuracy: ({:.0f}%)\n'.format(loss_test, acc_test*100))
         if run_file is not None:
             with open(run_file, 'a') as file:
-                file.write('\nTest set: Average Loss: {:.4f}, Accuracy: ({:.0f}%)\n'.format(loss_test, acc_test*100))
+                file.write('\nEpoch: {} \tTest Loss: {:.6f}'.format(epoch, loss_whole_trajectory.item()))
 
             # print(
             #     f'Epoch: {epoch + 1:2}/{epochs}, batch: {batch + 1:4}/{n_batches}, train loss: {loss_train:8.3f}, '
