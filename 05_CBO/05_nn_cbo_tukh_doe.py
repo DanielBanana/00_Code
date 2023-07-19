@@ -31,6 +31,8 @@ from collections import OrderedDict
 from pyDOE2 import fullfact
 import datetime
 
+from utils import build_plot, result_plot_multi_dim, create_results_directory, create_results_subdirectories, create_doe_experiments, create_experiment_directory
+
 MODELS = {
     'SimpleMLP': SimpleMLP,
     'TinyMLP': TinyMLP,
@@ -61,7 +63,6 @@ class VdPMLP(nn.Module):
 
     def forward(self, x):
         return self.model(x)
-
 
 
 # Managing class for Hybrid model with FMU
@@ -135,6 +136,16 @@ def ode(z, t, ode_parameters):
     derivative = jnp.array([z[1],
                            -kappa*z[0]/mass + (mu*(1-z[0]**2)*z[1])/mass])
     return derivative
+
+# @jit
+# def ode(z, t, ode_parameters):
+#     '''Calculates the right hand side of the original ODE.'''
+#     kappa = ode_parameters[0]
+#     mu = ode_parameters[1]
+#     mass = ode_parameters[2]
+#     derivative = jnp.array([z[1],
+#                            -kappa*z[0]/mass + (mu*(1-z[0]**2))/mass])
+#     return derivative
 
 @jit
 def ode_res(z, t, ode_parameters):
@@ -283,7 +294,6 @@ class Hybrid_Python(nn.Module):
 #     def forward(self, input):
 #         return augment_model(input)
 
-
 # For calculation of the reference solution we need the correct behaviour of the VdP
 def damping(mu, inputs):
     return mu * (1 - inputs[0]**2) * inputs[1]
@@ -320,8 +330,9 @@ def train(model:Hybrid_FMU or Hybrid_Python,
     losses_train = []
     accuracies_test = []
     losses_test = []
-
     best_loss = np.inf
+
+    run_file = os.path.join(plotting_reference_data['results_directory'], 'results.txt')
 
     # if not residual:
     #     restore=True
@@ -331,8 +342,6 @@ def train(model:Hybrid_FMU or Hybrid_Python,
                           l=l, dt=dt, anisotropic=anisotropic, eps=eps, partial_update=partial_update,
                           use_multiprocessing=use_multiprocessing, n_processes=processes,
                           particles_batch_size=particles_batch_size, device=device, fmu=False, residual=residual, restore=restore)
-
-    augment_model_parameters = []
 
     if problem_type == 'classification':
         loss_fn = Loss(F.nll_loss, optimizer)
@@ -345,7 +354,7 @@ def train(model:Hybrid_FMU or Hybrid_Python,
     for epoch in range(epochs):
         accuracies_epoch_train = []
         losses_epoch_train = []
-        for batch, (input_train, output_train) in enumerate(train_dataloader):
+        for batch_idx, (input_train, output_train) in enumerate(train_dataloader):
             input_train, output_train = input_train.to(device), output_train.to(device)
 
             # Calculate current solution
@@ -382,37 +391,71 @@ def train(model:Hybrid_FMU or Hybrid_Python,
             loss_fn.backward(input_train, output_train, backward_gradients=False)
             optimizer.step()
 
-            # Evaluate test set
-            with torch.no_grad():
-                losses = []
-                accuracies = []
-                for input_test, output_test in test_dataloader:
-                    input_test, output_test = input_test.to(device), output_test.to(device)
-                    if residual:
-                        if problem_type == 'classification':
-                            pass
-                            # loss, acc = _evaluate_class(model, X_test, y_test, F.nll_loss)
-                        else:
-                            pred_test = model(input_test)
-                            loss = _evaluate_reg(pred_test, output_test, F.mse_loss)
-                            train_acc = 0.0
+            if batch_idx % eval_freq == 0:
+                print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
+                    epoch, batch_idx * len(input_train), len(train_dataloader.dataset),
+                    100. * batch_idx / len(train_dataloader), loss_train.item()))
+
+        t_train = plotting_reference_data['t_train']
+        t_test = plotting_reference_data['t_test']
+        z_ref_train = plotting_reference_data['z_ref_train']
+        z_ref_test = plotting_reference_data['z_ref_test']
+
+        if residual:
+            if problem_type == 'classification':
+                # loss_train, train_acc = _evaluate_class(model, X, y, F.nll_loss)
+                pass
+            else:
+                pred_train_whole_trajectory = model(z_ref_train)
+        else:
+            model.t = t_train.detach().numpy()
+            model.z0 = z_ref_train[0]
+            if isinstance(model, Hybrid_FMU):
+                pred_train_whole_trajectory = torch.tensor(model(pointers))
+            else:
+                pred_train_whole_trajectory = torch.tensor(model(stim=False))
+
+        loss_whole_trajectory = _evaluate_reg(pred_train_whole_trajectory, z_ref_train, F.mse_loss).cpu()
+
+        if run_file is not None:
+            with open(run_file, 'a') as file:
+                file.write('\nTrain Epoch: {} \tLoss: {:.6f}'.format(epoch, loss_whole_trajectory.item()))
+
+        # Evaluate test set
+        with torch.no_grad():
+            losses = []
+            accuracies = []
+            for input_test, output_test in test_dataloader:
+                input_test, output_test = input_test.to(device), output_test.to(device)
+                if residual:
+                    if problem_type == 'classification':
+                        pass
+                        # loss, acc = _evaluate_class(model, X_test, y_test, F.nll_loss)
                     else:
-                        model.t = input_test.detach().numpy()
-                        model.z0 = output_test[0]
-                        if isinstance(model, Hybrid_FMU):
-                            pred_test = torch.tensor(model(pointers))
-                        else:
-                            pred_test = torch.tensor(model(stim=False))
+                        pred_test = model(input_test)
+                        loss = _evaluate_reg(pred_test, output_test, F.mse_loss)
+                        train_acc = 0.0
+                else:
+                    model.t = input_test.detach().numpy()
+                    model.z0 = output_test[0]
+                    if isinstance(model, Hybrid_FMU):
+                        pred_test = torch.tensor(model(pointers))
+                    else:
+                        pred_test = torch.tensor(model(stim=False))
 
-                    loss = _evaluate_reg(pred_test, output_test, F.mse_loss)
-                    acc = 0.0
-                    losses.append(loss.cpu())
-                    accuracies.append(acc)
-                loss_test, test_acc = np.mean(losses), np.mean(accuracies)
-                if batch == n_batches - 1:
-                    accuracies_test.append(test_acc)
-                    losses_test.append(loss_test)
+                loss = _evaluate_reg(pred_test, output_test, F.mse_loss)
+                acc = 0.0
+                losses.append(loss.cpu())
+                accuracies.append(acc)
+            loss_test, acc_test = np.mean(losses), np.mean(accuracies)
+            if batch_idx == n_batches - 1:
+                accuracies_test.append(acc_test)
+                losses_test.append(loss_test)
 
+        print('\nTest set: Average loss: {:.4f}, Accuracy: ({:.0f}%)\n'.format(loss_test, acc_test*100))
+        if run_file is not None:
+            with open(run_file, 'a') as file:
+                file.write('\nTest set: Average Loss: {:.4f}, Accuracy: ({:.0f}%)\n'.format(loss_test, acc_test*100))
 
             # print(
             #     f'Epoch: {epoch + 1:2}/{epochs}, batch: {batch + 1:4}/{n_batches}, train loss: {loss_train:8.3f}, '
@@ -456,13 +499,13 @@ def train(model:Hybrid_FMU or Hybrid_Python,
             if residual:
                 model.residual_mode()
 
-            result_plot('Custom', 'VdP', os.path.join(results_directory, f'Epoch {epoch}.png'),
+            result_plot_multi_dim('Custom', 'VdP', os.path.join(results_directory, f'Epoch {epoch}.png'),
                         t_train, pred_train, t_test, pred_test,
                         np.hstack((t_train, t_test)), np.vstack((z_ref_train, z_ref_test)))
 
-        print(f'Epoch: {epoch + 1:2}/{epochs}, batch: {batch + 1:4}/{n_batches}, train loss: {losses_train[-1]:8.3f}, '
-              f'train acc: {accuracies_train[-1]:8.3f}, test loss: {losses_test[-1]:8.3f}, test acc: {accuracies_test[-1]:8.3f}, alpha: {optimizer.alpha:8.3f}, sigma: {optimizer.sigma:8.6f}, dt: {optimizer.dt:8.6f}',
-              flush=True)
+        # print(f'Epoch: {epoch + 1:2}/{epochs}, batch: {batch_idx + 1:4}/{n_batches}, train loss: {losses_train[-1]:8.3f}, '
+        #       f'train acc: {accuracies_train[-1]:8.3f}, test loss: {losses_test[-1]:8.3f}, test acc: {accuracies_test[-1]:8.3f}, alpha: {optimizer.alpha:8.3f}, sigma: {optimizer.sigma:8.6f}, dt: {optimizer.dt:8.6f}',
+        #       flush=True)
 
         if cooling:
             optimizer.cooling_step()
@@ -515,110 +558,109 @@ def f_step(prev_z, i, t, ode_parameters):
     next_z = prev_z + dt * ode(prev_z, t[i], ode_parameters)
     return next_z, next_z
 
-def build_plot(epochs, model_name, dataset_name, plot_path,
-               train_acc, test_acc, loss_train, loss_test):
-    plt.rcParams['figure.figsize'] = (20, 10)
-    plt.rcParams['font.size'] = 25
+# def build_plot(epochs, model_name, dataset_name, plot_path,
+#                train_acc, test_acc, loss_train, loss_test):
+#     plt.rcParams['figure.figsize'] = (20, 10)
+#     plt.rcParams['font.size'] = 25
 
-    epochs_range = np.arange(1, epochs + 1, dtype=int)
+#     epochs_range = np.arange(1, epochs + 1, dtype=int)
 
-    # plt.clf()
-    fig, (ax1, ax2) = plt.subplots(1, 2)
+#     # plt.clf()
+#     fig, (ax1, ax2) = plt.subplots(1, 2)
 
-    ax1.plot(epochs_range, train_acc, label='train')
-    ax1.plot(epochs_range, test_acc, label='test')
-    ax1.legend()
-    ax1.set_xlabel('epoch')
-    ax1.set_ylabel('accuracy')
-    ax1.set_title('Accuracy')
+#     ax1.plot(epochs_range, train_acc, label='train')
+#     ax1.plot(epochs_range, test_acc, label='test')
+#     ax1.legend()
+#     ax1.set_xlabel('epoch')
+#     ax1.set_ylabel('accuracy')
+#     ax1.set_title('Accuracy')
 
-    ax2.plot(epochs_range, loss_train, label='train')
-    ax2.plot(epochs_range, loss_test, label='test')
-    ax2.legend()
-    ax2.set_xlabel('epoch')
-    ax2.set_ylabel('loss')
-    ax2.set_title('Loss')
+#     ax2.plot(epochs_range, loss_train, label='train')
+#     ax2.plot(epochs_range, loss_test, label='test')
+#     ax2.legend()
+#     ax2.set_xlabel('epoch')
+#     ax2.set_ylabel('loss')
+#     ax2.set_title('Loss')
 
-    fig.suptitle(f'{model_name} @ {dataset_name}')
-    fig.savefig(plot_path)
-    plt.close(fig)
+#     fig.suptitle(f'{model_name} @ {dataset_name}')
+#     fig.savefig(plot_path)
+#     plt.close(fig)
 
+# def result_plot_multi_dim(model_name, dataset_name, plot_path,
+#                 input_train, output_train, input_test, output_test, input_reference, output_reference, scatter=False):
+#     plt.rcParams['figure.figsize'] = (20, 10)
+#     plt.rcParams['font.size'] = 25
 
-def result_plot(model_name, dataset_name, plot_path,
-                input_train, output_train, input_test, output_test, input_reference, output_reference, scatter=False):
-    plt.rcParams['figure.figsize'] = (20, 10)
-    plt.rcParams['font.size'] = 25
+#     # Get the dimensions of the output
+#     output_dims = output_train.shape[1]
 
-    # Get the dimensions of the output
-    output_dims = output_train.shape[1]
+#     fig, axes = plt.subplots(output_dims, 2)
 
-    fig, axes = plt.subplots(output_dims, 2)
+#     for out_dim in range(output_dims):
 
-    for out_dim in range(output_dims):
+#         axes[out_dim, 0].plot(input_reference, output_reference[:,out_dim], label='Reference')
+#         if scatter:
+#             axes[out_dim, 0].scatter(input_train, output_train[:,out_dim], label='Prediction')
+#         else:
+#             axes[out_dim, 0].plot(input_train, output_train[:,out_dim], label='Prediction')
+#         axes[out_dim, 0].legend()
+#         axes[out_dim, 0].set_xlabel('X')
+#         axes[out_dim, 0].set_ylabel('y')
+#         axes[out_dim, 0].set_title(f'Variable {out_dim+1} - Train')
 
-        axes[out_dim, 0].plot(input_reference, output_reference[:,out_dim], label='Reference')
-        if scatter:
-            axes[out_dim, 0].scatter(input_train, output_train[:,out_dim], label='Prediction')
-        else:
-            axes[out_dim, 0].plot(input_train, output_train[:,out_dim], label='Prediction')
-        axes[out_dim, 0].legend()
-        axes[out_dim, 0].set_xlabel('X')
-        axes[out_dim, 0].set_ylabel('y')
-        axes[out_dim, 0].set_title(f'Variable {out_dim+1} - Train')
+#         axes[out_dim, 1].plot(input_reference, output_reference[:,out_dim], label='Reference')
+#         if scatter:
+#             axes[out_dim, 1].scatter(input_test, output_test[:,out_dim], label='Prediction')
+#         else:
+#             axes[out_dim, 1].plot(input_test, output_test[:,out_dim], label='Prediction')
+#         axes[out_dim, 1].legend()
+#         axes[out_dim, 1].set_xlabel('X')
+#         axes[out_dim, 1].set_ylabel('y')
+#         axes[out_dim, 1].set_title(f'Variable {out_dim+1} - Test')
 
-        axes[out_dim, 1].plot(input_reference, output_reference[:,out_dim], label='Reference')
-        if scatter:
-            axes[out_dim, 1].scatter(input_test, output_test[:,out_dim], label='Prediction')
-        else:
-            axes[out_dim, 1].plot(input_test, output_test[:,out_dim], label='Prediction')
-        axes[out_dim, 1].legend()
-        axes[out_dim, 1].set_xlabel('X')
-        axes[out_dim, 1].set_ylabel('y')
-        axes[out_dim, 1].set_title(f'Variable {out_dim+1} - Test')
+#     fig.tight_layout()
+#     fig.suptitle(f'{model_name} @ {dataset_name}')
+#     fig.savefig(plot_path)
+#     plt.close(fig)
 
-    fig.tight_layout()
-    fig.suptitle(f'{model_name} @ {dataset_name}')
-    fig.savefig(plot_path)
-    plt.close(fig)
+# def create_results_directory(directory, results_directory_name=None):
+#     if results_directory_name is None:
+#         now = datetime.datetime.now()
+#         date = '-'.join([str(now.year), str(now.month), str(now.day)]) + '_' + '-'.join([str(now.hour), str(now.minute)])
+#         results_directory = os.path.join(directory, date)
+#     else:
+#         results_directory = os.path.join(directory, results_directory_name)
+#         if not os.path.exists(results_directory):
+#             os.mkdir(results_directory)
+#         else:
+#             count = 1
+#             while os.path.exists(results_directory):
+#                 results_directory = os.path.join(directory, results_directory_name + f'_{count}')
+#                 count += 1
+#             os.mkdir(results_directory)
+#     return results_directory
 
-def create_results_directory(directory, results_directory_name=None):
-    if results_directory_name is None:
-        now = datetime.datetime.now()
-        doe_date = '-'.join([str(now.year), str(now.month), str(now.day)]) + '_' + '-'.join([str(now.hour), str(now.minute)])
-        doe_directory = os.path.join(directory, doe_date)
-    else:
-        doe_directory = os.path.join(directory, results_directory_name)
-        if not os.path.exists(doe_directory):
-            os.mkdir(doe_directory)
-        else:
-            count = 1
-            while os.path.exists(doe_directory):
-                doe_directory = os.path.join(directory, results_directory_name + f'_{count}')
-                count += 1
-            os.mkdir(doe_directory)
-    return doe_directory
+# def create_results_subdirectories(results_directory, trajectory=False, residual=False, checkpoint=True):
+#     return_directories = []
+#     if trajectory:
+#         trajectory_directory = os.path.join(results_directory, 'trajectory')
+#         if not os.path.exists(trajectory_directory):
+#             os.mkdir(trajectory_directory)
+#         return_directories.append(trajectory_directory)
 
-def create_results_subdirectories(results_directory, trajectory=False, residual=False, checkpoint=True):
-    return_directories = []
-    if trajectory:
-        trajectory_directory = os.path.join(results_directory, 'trajectory')
-        if not os.path.exists(trajectory_directory):
-            os.mkdir(trajectory_directory)
-        return_directories.append(trajectory_directory)
+#     if residual:
+#         residual_directory = os.path.join(results_directory, 'residual')
+#         if not os.path.exists(residual_directory):
+#             os.mkdir(residual_directory)
+#         return_directories.append(residual_directory)
 
-    if residual:
-        residual_directory = os.path.join(results_directory, 'residual')
-        if not os.path.exists(residual_directory):
-            os.mkdir(residual_directory)
-        return_directories.append(residual_directory)
+#     if checkpoint:
+#         checkpoint_directory = os.path.join(results_directory, 'ckpt')
+#         if not os.path.exists(checkpoint_directory):
+#             os.mkdir(checkpoint_directory)
+#         return_directories.append(checkpoint_directory)
 
-    if checkpoint:
-        checkpoint_directory = os.path.join(results_directory, 'ckpt')
-        if not os.path.exists(checkpoint_directory):
-            os.mkdir(checkpoint_directory)
-        return_directories.append(checkpoint_directory)
-
-    return tuple(return_directories)
+#     return tuple(return_directories)
 
 def create_reference_solution(start, end, n_steps, z0, reference_ode_parameters, ode_integrator):
 
@@ -646,26 +688,26 @@ def create_residual_reference_solution(t_train, z_ref_train, t_test, z_ref_test,
 
     return train_residual_inputs, train_residual_outputs, test_residual_inputs, test_residual_outputs
 
-def create_doe_experiments(doe_parameters, method='fullfact'):
-    levels = [len(val) for val in doe_parameters.values()]
-    if method == 'fullfact':
-        doe = fullfact(levels)
-    else:
-        print('Method not supported, using fullfact')
-        doe = fullfact(levels)
-    experiments = []
-    for experiment in doe:
-        experiment_dict = {}
-        for i, key in enumerate(doe_parameters.keys()):
-            experiment_dict[key] = doe_parameters[key][int(experiment[i])]
-        experiments.append(experiment_dict)
-    return tuple(experiments)
+# def create_doe_experiments(doe_parameters, method='fullfact'):
+#     levels = [len(val) for val in doe_parameters.values()]
+#     if method == 'fullfact':
+#         doe = fullfact(levels)
+#     else:
+#         print('Method not supported, using fullfact')
+#         doe = fullfact(levels)
+#     experiments = []
+#     for experiment in doe:
+#         experiment_dict = {}
+#         for i, key in enumerate(doe_parameters.keys()):
+#             experiment_dict[key] = doe_parameters[key][int(experiment[i])]
+#         experiments.append(experiment_dict)
+#     return tuple(experiments)
 
-def create_experiment_directory(doe_directory, n_exp):
-    experiment_directory = os.path.join(doe_directory, f'Experiment {n_exp}')
-    if not os.path.exists(experiment_directory):
-        os.mkdir(experiment_directory)
-    return experiment_directory
+# def create_experiment_directory(doe_directory, n_exp):
+#     experiment_directory = os.path.join(doe_directory, f'Experiment {n_exp}')
+#     if not os.path.exists(experiment_directory):
+#         os.mkdir(experiment_directory)
+#     return experiment_directory
 
 def create_clean_mini_batch(n_mini_batches, x_ref, t):
     n_timesteps = t.shape[0]
@@ -703,50 +745,50 @@ if __name__ == '__main__':
                         help='Perform Design of Experiments with NN Parameters and ODE Hyperparameters on Residuals')
     parser.add_argument('--trajectory', required=False, type=bool, default=True,
                         help='Perform Design of Experiments with NN Parameters and ODE Hyperparameters on Trajectory')
-    parser.add_argument('--results_directory_name', required=False, type=str, default='Test 4 Best of Riedl 200',
+    parser.add_argument('--results_directory_name', required=False, type=str, default='CBO_VdP_KONSTANTIN',
                         help='name under which the results should be saved, like plots and such')
     parser.add_argument('--build_plot', required=False, default=True, action='store_true',
                         help='specify to build loss and accuracy plot')
     # parser.add_argument('--plot_path', required=False, type=str, default='demo.png',
     #                     help='path to save the resulting plot')
-    parser.add_argument('--eval_freq', type=int, default=100, help='evaluate test accuracy every EVAL_FREQ '
+    parser.add_argument('--eval_freq', type=int, default=5, help='evaluate test accuracy every EVAL_FREQ '
                                                                    'samples-level batches')
     parser.add_argument('--fmu', type=bool, default=False, help='Whether or not to use the FMU or a python implementation')
 
     # GENERAL ODE OPTIONS
     parser.add_argument('--start', type=float, default=0.0, help='Start value of the ODE integration')
     parser.add_argument('--end', type=float, default=10.0, help='End value of the ODE integration')
-    parser.add_argument('--n_steps', type=float, default=1001, help='How many integration steps to perform')
+    parser.add_argument('--n_steps', type=float, default=60001, help='How many integration steps to perform')
     parser.add_argument('--ic', type=list, default=[1.0, 0.0], help='initial_condition of the ODE')
     parser.add_argument('--aug_state', type=bool, default=False, help='Whether or not to use the augemented state for the ODE dynamics')
     parser.add_argument('--aug_dim', type=int, default=4, help='Number of augment dimensions')
 
     # VdP OPTIONS
     parser.add_argument('--kappa', type=float, default=1.0, help='oscillation constant of the VdP oscillation term')
-    parser.add_argument('--mu', type=float, default=8.53, help='damping constant of the VdP damping term')
+    parser.add_argument('--mu', type=float, default=3.0, help='damping constant of the VdP damping term')
     parser.add_argument('--mass', type=float, default=1.0, help='mass constant of the VdP system')
     parser.add_argument('--stimulate', type=bool, default=False, help='Whether or not to use the stimulated dynamics')
 
     # parser.add_argument('--simple_problem', type=bool, default=False, help='Whether or not to use a simple damped oscillator instead of VdP')
 
     # NEURAL NETWORK OPTIONS
-    parser.add_argument('--layers', type=int, default=2, help='Number of hidden layers')
-    parser.add_argument('--layer_size', type=int, default=40, help='Number of neurons in a hidden layer')
+    parser.add_argument('--layers', type=int, default=1, help='Number of hidden layers')
+    parser.add_argument('--layer_size', type=int, default=25, help='Number of neurons in a hidden layer')
 
     # GENERAL OPTIMIZER OPTIONS
     # CBO OPTIONS
-    parser.add_argument('--epochs', type=int, default=2000, help='train for EPOCHS epochs')
+    parser.add_argument('--epochs', type=int, default=100, help='train for EPOCHS epochs')
     parser.add_argument('--batch_size', type=int, default=60, help='batch size (for samples-level batching)')
-    parser.add_argument('--particles', type=int, default=100, help='')
+    parser.add_argument('--particles', type=int, default=75, help='')
     parser.add_argument('--particles_batch_size', type=int, default=10, help='batch size '
                                                                              '(for particles-level batching)')
-    parser.add_argument('--alpha', type=float, default=100.0, help='alpha from CBO dynamics')
-    parser.add_argument('--sigma', type=float, default=0.1 ** 0.5, help='sigma from CBO dynamics')
-    parser.add_argument('--l', type=float, default=0.1, help='lambda from CBO dynamics')
-    parser.add_argument('--dt', type=float, default=1.0, help='dt from CBO dynamics')
+    parser.add_argument('--alpha', type=float, default=50.0, help='alpha from CBO dynamics')
+    parser.add_argument('--sigma', type=float, default=0.4 ** 0.5, help='sigma from CBO dynamics')
+    parser.add_argument('--l', type=float, default=1.0, help='lambda from CBO dynamics')
+    parser.add_argument('--dt', type=float, default=0.1, help='dt from CBO dynamics')
     parser.add_argument('--anisotropic', type=bool, default=True, help='whether to use anisotropic or not')
-    parser.add_argument('--eps', type=float, default=1e-4, help='threshold for additional random shift')
-    parser.add_argument('--partial_update', type=bool, default=False, help='whether to use partial or full update')
+    parser.add_argument('--eps', type=float, default=1e-5, help='threshold for additional random shift')
+    parser.add_argument('--partial_update', type=bool, default=True, help='whether to use partial or full update')
     parser.add_argument('--cooling', type=bool, default=False, help='whether to apply cooling strategy')
 
     parser.add_argument('--restore', required=False, type=bool, default=False,
@@ -816,30 +858,31 @@ if __name__ == '__main__':
             if args.residual:
                 # residual_doe_parameters = OrderedDict({'alpha': [1e0, 1e2]})
 
-                residual_doe_parameters = OrderedDict({'alpha': [100],
-                                                       'sigma': [0.4**0.5],
+                residual_doe_parameters = OrderedDict({'alpha': [50],
+                                                       'sigma': [1**0.5],
                                                        'l': [1.0],
                                                        'dt': [0.1],
-                                                       'particles':[200],
-                                                       'particles_batch_size': [20],
+                                                       'particles':[75],
+                                                       'particles_batch_size': [10],
                                                        'cooling': [False],
-                                                       'layer_size': [40],
-                                                       'layers': [2]})
+                                                       'layer_size': [25],
+                                                       'layers': [1]})
                 print(f'Residual DoE Parameters: {residual_doe_parameters}')
 
             if args.trajectory:
                 if args.residual:
-                    trajectory_doe_parameters = OrderedDict({'batch_size': [60, 120]})
+                    trajectory_doe_parameters = OrderedDict({'batch_size': [60]})
                 else:
-                    trajectory_doe_parameters = OrderedDict({'alpha': [1e0, 1e2],
-                                                            'sigma': [0.1**0.5, 0.4**0.5],
-                                                            'l': [1.0, 0.1, 0.01],
-                                                            'dt': [1.0, 0.1, 0.01],
-                                                            'particles':[10, 100],
-                                                            'batch_size': [100, 200],
-                                                            'cooling': [True, False],
-                                                            'layer_size': [20, 40],
-                                                            'n_layers': [1, 2, 3]})
+                    trajectory_doe_parameters = OrderedDict({'alpha': [50],
+                                                            'sigma': [ 0.4**0.5],
+                                                            'l': [1.0],
+                                                            'dt': [0.1],
+                                                            'particles':[500],
+                                                            'particles_batch_size': [10],
+                                                            'batch_size': [50],
+                                                            'cooling': [False],
+                                                            'layer_size': [25],
+                                                            'n_layers': [1]})
                 print(f'Trajectory DoE Parameters: {trajectory_doe_parameters}')
 
 
@@ -941,7 +984,8 @@ if __name__ == '__main__':
                             train_dataloader, test_dataloader = load_generic_dataloaders(train_dataset=train_dataset,
                                                                                         train_batch_size=args.batch_size if args.batch_size < len(train_dataset) else len(train_dataset),
                                                                                         test_dataset=test_dataset,
-                                                                                        test_batch_size=args.batch_size if args.batch_size < len(test_dataset) else len(test_dataset))
+                                                                                        test_batch_size=args.batch_size if args.batch_size < len(test_dataset) else len(test_dataset),
+                                                                                        shuffle=False)
 
                             # TRAINING
                             ####################################################################################
@@ -1027,7 +1071,7 @@ if __name__ == '__main__':
                                 plot_model.z0 = z0_test
                                 pred_test = torch.tensor(plot_model())
 
-                                result_plot('Custom', 'VdP', os.path.join(residual_directory, f'Final.png'),
+                                result_plot_multi_dim('Custom', 'VdP', os.path.join(residual_directory, f'Final.png'),
                                 t_train, pred_train, t_test, pred_test,
                                 np.hstack((t_train, t_test)), np.vstack((z_ref_train, z_ref_test)))
 
@@ -1072,7 +1116,8 @@ if __name__ == '__main__':
                         train_dataloader, test_dataloader = load_generic_dataloaders(train_dataset=train_dataset,
                                                                                     train_batch_size=args.batch_size if args.batch_size < len(train_dataset) else len(train_dataset),
                                                                                     test_dataset=test_dataset,
-                                                                                    test_batch_size=args.batch_size if args.batch_size < len(test_dataset) else len(test_dataset))
+                                                                                    test_batch_size=args.batch_size if args.batch_size < len(test_dataset) else len(test_dataset),
+                                                                                    shuffle=False)
 
                         result = train(model=hybrid_model,
                                     train_dataloader=train_dataloader,
@@ -1113,7 +1158,7 @@ if __name__ == '__main__':
                             plot_model.z0 = z0_test
                             pred_test = torch.tensor(plot_model())
 
-                            result_plot('Custom', 'VdP', os.path.join(residual_directory, f'Final.png'),
+                            result_plot_multi_dim('Custom', 'VdP', os.path.join(residual_directory, f'Final.png'),
                                 t_train, pred_train, t_test, pred_test,
                                 np.hstack((t_train, t_test)), np.vstack((z_ref_train, z_ref_test)))
 
@@ -1134,7 +1179,6 @@ if __name__ == '__main__':
 
                     if len(trajectory_doe_parameters) != 0:
                         # PREPARE DoE
-
                         with open(results_file, 'a') as file:
                             file.writelines(f'VdP Setup: kappa: {args.kappa}, mu: {args.mu}, mass: {args.mass}, Start: {args.start}, End: {args.end}, Steps: {args.n_steps}')
                             file.write('\n')
@@ -1188,11 +1232,11 @@ if __name__ == '__main__':
                             train_dataloader, test_dataloader = load_generic_dataloaders(train_dataset=train_dataset,
                                                                                         train_batch_size=args.batch_size if args.batch_size < len(train_dataset) else len(train_dataset),
                                                                                         test_dataset=test_dataset,
-                                                                                        test_batch_size=args.batch_size if args.batch_size < len(test_dataset) else len(test_dataset))
+                                                                                        test_batch_size=args.batch_size if args.batch_size < len(test_dataset) else len(test_dataset),
+                                                                                        shuffle=False)
 
                             # TRAINING
                             ####################################################################################
-                            # augment_model = VdPMLP()
                             layers = [2] + [args.layer_size]*args.layers + [1]
                             augment_model = CustomMLP(layers)
                             hybrid_model = Hybrid_Python(reference_ode_parameters, augment_model, z0, t_train[:args.batch_size], mode='trajectory')
@@ -1284,7 +1328,7 @@ if __name__ == '__main__':
                                 plot_model.z0 = z0_test
                                 pred_test = torch.tensor(plot_model())
 
-                                result_plot('Custom', 'VdP', os.path.join(trajectory_directory, f'Final.png'),
+                                result_plot_multi_dim('Custom', 'VdP', os.path.join(trajectory_directory, f'Final.png'),
                                             t_train, pred_train, t_test, pred_test,
                                             np.hstack((t_train, t_test)), np.vstack((z_ref_train, z_ref_test)))
 
@@ -1309,7 +1353,9 @@ if __name__ == '__main__':
 
                         # TRAINING
                         ####################################################################################
-                        augment_model = VdPMLP()
+                        # augment_model = VdPMLP()
+                        layers = [2] + [args.layer_size]*args.layers + [1]
+                        augment_model = CustomMLP(layers)
                         hybrid_model = Hybrid_Python(reference_ode_parameters, augment_model, z0, t_train[:args.batch_size], mode='trajectory')
                         start_time = time.time()
                         result = train(model=hybrid_model,
@@ -1354,7 +1400,7 @@ if __name__ == '__main__':
                             hybrid_model.t = t_test
                             pred_test = torch.tensor(hybrid_model())
 
-                            result_plot('Custom', 'VdP', os.path.join(trajectory_directory, f'Final.png'),
+                            result_plot_multi_dim('Custom', 'VdP', os.path.join(trajectory_directory, f'Final.png'),
                                         t_train, pred_train, t_test, pred_test,
                                         np.hstack((t_train, t_test)), np.vstack((z_ref_train, z_ref_test)))
 
@@ -1364,92 +1410,95 @@ if __name__ == '__main__':
 
             if args.fmu:
                 if args.trajectory:
-                        # ODE SETUP
-                        ####################################################################################
-                        # Training Setup
-                        t_train = np.linspace(args.start, args.end, args.n_steps)
+                    # ODE SETUP
+                    ####################################################################################
+                    # Training Setup
+                    t_train = np.linspace(args.start, args.end, args.n_steps)
 
-                        # Test Setup
-                        t_start_test = args.end
-                        t_end_test = args.end + (args.end - args.start)*0.5
-                        n_steps_test = int(args.n_steps* 0.5)
-                        t_test = np.linspace(t_start_test, t_end_test, n_steps_test)
+                    # Test Setup
+                    t_start_test = args.end
+                    t_end_test = args.end + (args.end - args.start)*0.5
+                    n_steps_test = int(args.n_steps* 0.5)
+                    t_test = np.linspace(t_start_test, t_end_test, n_steps_test)
 
-                        mu = 5.0
+                    mu = 5.0
 
-                        # FMU SETUP
-                        ####################################################################################
-                        fmu_filename = 'Van_der_Pol_damping_input.fmu'
-                        path = os.path.abspath(__file__)
-                        fmu_filename = '/'.join(path.split('/')[:-1]) + '/' + fmu_filename
-                        fmu_evaluator = FMUEvaluator(fmu_filename, args.start, args.end)
-                        pointers = fmu_evaluator.get_pointers()
+                    # FMU SETUP
+                    ####################################################################################
+                    fmu_filename = 'Van_der_Pol_damping_input.fmu'
+                    path = os.path.abspath(__file__)
+                    fmu_filename = '/'.join(path.split('/')[:-1]) + '/' + fmu_filename
+                    fmu_evaluator = FMUEvaluator(fmu_filename, args.start, args.end)
+                    pointers = fmu_evaluator.get_pointers()
 
-                        z_ref_train = f_euler_fmu(z0=args.ic, t=t_train, fmu_evaluator=fmu_evaluator, model=damping, model_parameters=mu, pointers=pointers)
-                        fmu_evaluator.reset_fmu(t_start_test, t_end_test)
-                        z_ref_test = f_euler_fmu(z0=z_ref_train[-1], t=t_test, fmu_evaluator=fmu_evaluator, model=damping, model_parameters=mu, pointers=pointers)
-                        fmu_evaluator.reset_fmu(args.start, args.end)
+                    z_ref_train = f_euler_fmu(z0=args.ic, t=t_train, fmu_evaluator=fmu_evaluator, model=damping, model_parameters=mu, pointers=pointers)
+                    fmu_evaluator.reset_fmu(t_start_test, t_end_test)
+                    z_ref_test = f_euler_fmu(z0=z_ref_train[-1], t=t_test, fmu_evaluator=fmu_evaluator, model=damping, model_parameters=mu, pointers=pointers)
+                    fmu_evaluator.reset_fmu(args.start, args.end)
 
-                        # Save the reference data for plotting during training
-                        plotting_reference_data = {'t_train': t_train,
-                                                't_test': t_test,
-                                                'z_ref_train': z_ref_train,
-                                                'z_ref_test': z_ref_test,
-                                                'results_directory': results_directory}
+                    # Save the reference data for plotting during training
+                    plotting_reference_data = {'t_train': t_train,
+                                            't_test': t_test,
+                                            'z_ref_train': z_ref_train,
+                                            'z_ref_test': z_ref_test,
+                                            'results_directory': results_directory}
 
-                        # CONVERT THE REFERENCE DATA TO A DATASET
-                        ####################################################################################
+                    # CONVERT THE REFERENCE DATA TO A DATASET
+                    ####################################################################################
 
-                        train_dataset = create_generic_dataset(torch.tensor(t_train), torch.tensor(z_ref_train))
-                        test_dataset = create_generic_dataset(torch.tensor(t_test), torch.tensor(z_ref_test))
+                    train_dataset = create_generic_dataset(torch.tensor(t_train), torch.tensor(z_ref_train))
+                    test_dataset = create_generic_dataset(torch.tensor(t_test), torch.tensor(z_ref_test))
 
-                        train_dataloader, test_dataloader = load_generic_dataloaders(train_dataset=train_dataset,
-                                                                                    train_batch_size=args.n_steps,
-                                                                                    test_dataset=test_dataset,
-                                                                                    test_batch_size=n_steps_test)
+                    train_dataloader, test_dataloader = load_generic_dataloaders(train_dataset=train_dataset,
+                                                                                train_batch_size=args.n_steps,
+                                                                                test_dataset=test_dataset,
+                                                                                test_batch_size=n_steps_test,
+                                                                                shuffle=False)
 
-                        # TRAINING
-                        ####################################################################################
-                        augment_model = VdPMLP()
-                        hybrid_model = Hybrid_FMU(fmu_evaluator, augment_model, args.ic, t_train)
-                        start_time = time.time()
-                        result = train(model=hybrid_model,
-                                    train_dataloader=train_dataloader,
-                                    test_dataloader=test_dataloader,
-                                    device=device,
-                                    use_multiprocessing=use_multiprocessing,
-                                    processes=args.processes,
-                                    epochs=args.epochs,
-                                    particles=args.particles,
-                                    particles_batch_size=args.particles_batch_size,
-                                    alpha=args.alpha,
-                                    sigma=args.sigma,
-                                    l=args.l,
-                                    dt=args.dt,
-                                    anisotropic=args.anisotropic,
-                                    eps=args.eps,
-                                    partial_update=args.partial_update,
-                                    cooling=args.cooling,
-                                    eval_freq=args.eval_freq,
-                                    problem_type='regression',
-                                    pointers=pointers,
-                                    plotting_reference_data=plotting_reference_data)
-                        print(f'Elapsed time: {time.time() - start_time} seconds')
-                        if args.build_plot:
-                            build_plot(args.epochs, args.model, args.dataset, os.path.join(results_directory, f'Loss.png'),
-                                    *result)
+                    # TRAINING
+                    ####################################################################################
+                    # augment_model = VdPMLP()
+                    layers = [2] + [args.layer_size]*args.layers + [1]
+                    augment_model = CustomMLP(layers)
+                    hybrid_model = Hybrid_FMU(fmu_evaluator, augment_model, args.ic, t_train)
+                    start_time = time.time()
+                    result = train(model=hybrid_model,
+                                train_dataloader=train_dataloader,
+                                test_dataloader=test_dataloader,
+                                device=device,
+                                use_multiprocessing=use_multiprocessing,
+                                processes=args.processes,
+                                epochs=args.epochs,
+                                particles=args.particles,
+                                particles_batch_size=args.particles_batch_size,
+                                alpha=args.alpha,
+                                sigma=args.sigma,
+                                l=args.l,
+                                dt=args.dt,
+                                anisotropic=args.anisotropic,
+                                eps=args.eps,
+                                partial_update=args.partial_update,
+                                cooling=args.cooling,
+                                eval_freq=args.eval_freq,
+                                problem_type='regression',
+                                pointers=pointers,
+                                plotting_reference_data=plotting_reference_data)
+                    print(f'Elapsed time: {time.time() - start_time} seconds')
+                    if args.build_plot:
+                        build_plot(args.epochs, args.model, args.dataset, os.path.join(results_directory, f'Loss.png'),
+                                *result)
 
-                            hybrid_model.t = t_train
-                            hybrid_model.z0 = z_ref_train[0]
-                            pred_train = torch.tensor(hybrid_model(pointers))
+                        hybrid_model.t = t_train
+                        hybrid_model.z0 = z_ref_train[0]
+                        pred_train = torch.tensor(hybrid_model(pointers))
 
-                            hybrid_model.t = t_test
-                            hybrid_model.z0 = z_ref_test[0]
-                            pred_test = torch.tensor(hybrid_model(pointers))
+                        hybrid_model.t = t_test
+                        hybrid_model.z0 = z_ref_test[0]
+                        pred_test = torch.tensor(hybrid_model(pointers))
 
-                            result_plot('Custom', 'VdP', os.path.join(results_directory, f'Final.png'),
-                                        t_train, pred_train, t_test, pred_test,
-                                        np.hstack((t_train, t_test)), np.vstack((z_ref_train, z_ref_test)))
+                        result_plot_multi_dim('Custom', 'VdP', os.path.join(results_directory, f'Final.png'),
+                                    t_train, pred_train, t_test, pred_test,
+                                    np.hstack((t_train, t_test)), np.vstack((z_ref_train, z_ref_test)))
             else:
                 if args.residual:
                     print('Training on Residuals...')
@@ -1487,7 +1536,8 @@ if __name__ == '__main__':
                     train_dataloader, test_dataloader = load_generic_dataloaders(train_dataset=train_dataset,
                                                                                 train_batch_size=args.batch_size if args.batch_size < len(train_dataset) else len(train_dataset),
                                                                                 test_dataset=test_dataset,
-                                                                                test_batch_size=args.batch_size if args.batch_size < len(test_dataset) else len(test_dataset))
+                                                                                test_batch_size=args.batch_size if args.batch_size < len(test_dataset) else len(test_dataset),
+                                                                                shuffle=False)
 
 
                     # TRAINING
@@ -1569,7 +1619,7 @@ if __name__ == '__main__':
                         plot_model.z0 = z0_test
                         pred_test = torch.tensor(plot_model())
 
-                        result_plot('Custom', 'VdP', os.path.join(residual_directory, f'Final.png'),
+                        result_plot_multi_dim('Custom', 'VdP', os.path.join(residual_directory, f'Final.png'),
                         t_train, pred_train, t_test, pred_test,
                         np.hstack((t_train, t_test)), np.vstack((z_ref_train, z_ref_test)))
 
@@ -1610,7 +1660,8 @@ if __name__ == '__main__':
                     train_dataloader, test_dataloader = load_generic_dataloaders(train_dataset=train_dataset,
                                                                                 train_batch_size=args.batch_size,
                                                                                 test_dataset=test_dataset,
-                                                                                test_batch_size=args.batch_size)
+                                                                                test_batch_size=args.batch_size,
+                                                                                shuffle=False)
 
                     if args.residual:
                         try:
@@ -1631,7 +1682,9 @@ if __name__ == '__main__':
 
                     # TRAINING
                     ####################################################################################
-                    augment_model = VdPMLP()
+                    # augment_model = VdPMLP()
+                    layers = [2] + [args.layer_size]*args.layers + [1]
+                    augment_model = CustomMLP(layers)
                     hybrid_model = Hybrid_Python(reference_ode_parameters, augment_model, z0, t_train[:args.batch_size], mode='trajectory')
                     start_time = time.time()
                     result = train(model=hybrid_model,
@@ -1696,6 +1749,6 @@ if __name__ == '__main__':
                         hybrid_model.t = t_test
                         pred_test = torch.tensor(hybrid_model())
 
-                        result_plot('Custom', 'VdP', os.path.join(trajectory_directory, f'Final.png'),
+                        result_plot_multi_dim('Custom', 'VdP', os.path.join(trajectory_directory, f'Final.png'),
                                     t_train, pred_train, t_test, pred_test,
                                     np.hstack((t_train, t_test)), np.vstack((z_ref_train, z_ref_test)))
