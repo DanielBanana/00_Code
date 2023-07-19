@@ -146,9 +146,9 @@ class Optimizer:
         if self.X is None:
             raise RuntimeError('Unable to perform the step without the prior loss.backward() call')
         start = time.time()
-        # self.V = self._get_particles_params() # V is the nn_parameters of the particles
+        self.V = self._get_particles_params() # V is the nn_parameters of the particles
         # print(f'_get_particles_params: {time.time()-start}')
-        self.V = self.particles
+        # self.V = self.particles
 
         time__compute_particles_outputs = []
         time__compute_energy_values = []
