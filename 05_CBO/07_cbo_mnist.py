@@ -15,13 +15,15 @@ from plot_results import plot_results, plot_losses, get_file_path
 # sys.path.append(os.path.join(os.getcwd().split('cbo_in-python')[0], 'cbo-in-python'))
 
 from cbo_in_python.src.torch.models import *
-from cbo_in_python.src.datasets import load_mnist_dataloaders, load_parabola_dataloaders, get_mnist_dataset, load_generic_dataloaders
+from cbo_in_python.src.datasets import load_mnist_dataloaders, load_parabola_dataloaders, load_shifted_parabola_dataloaders, get_mnist_dataset, load_generic_dataloaders
 from cbo_in_python.src.torch.optimizer import Optimizer
 from cbo_in_python.src.torch.loss import Loss
 from torch.utils.data import Dataset, DataLoader
 
 from collections import OrderedDict
 from pyDOE2 import fullfact
+
+from utils import build_plot, result_plot, create_results_directory, create_doe_experiments, create_experiment_directory
 
 MODELS = {
     'MNIST_726x10': MNIST_726x10,
@@ -37,7 +39,8 @@ MODELS = {
 
 DATASETS = {
     'MNIST': load_mnist_dataloaders,
-    'PARABOLA': load_parabola_dataloaders
+    'PARABOLA': load_parabola_dataloaders,
+    'SHIFTED-PARABOLA': load_shifted_parabola_dataloaders
 }
 
 def _evaluate_class(model, X_, y_, loss_fn):
@@ -62,8 +65,6 @@ def number_of_nn_evaluations(n_train_batches,
     n = n_particles/particle_batch_size
 
     return int(((1+n)*n_train_batches + n_test_batches)*epochs)
-
-
 
 def train(model, train_dataloader, test_dataloader, device, use_multiprocessing, processes,
           epochs, particles, particles_batch_size,
@@ -144,102 +145,101 @@ def train(model, train_dataloader, test_dataloader, device, use_multiprocessing,
 
     return train_accuracies, test_accuracies, train_losses, test_losses
 
+# def build_plot(epochs, model_name, dataset_name, plot_path,
+#                train_acc, test_acc, train_loss, test_loss):
+#     plt.rcParams['figure.figsize'] = (20, 10)
+#     plt.rcParams['font.size'] = 25
 
-def build_plot(epochs, model_name, dataset_name, plot_path,
-               train_acc, test_acc, train_loss, test_loss):
-    plt.rcParams['figure.figsize'] = (20, 10)
-    plt.rcParams['font.size'] = 25
+#     epochs_range = np.arange(1, epochs + 1, dtype=int)
 
-    epochs_range = np.arange(1, epochs + 1, dtype=int)
+#     plt.clf()
+#     fig, (ax1, ax2) = plt.subplots(1, 2)
 
-    plt.clf()
-    fig, (ax1, ax2) = plt.subplots(1, 2)
+#     ax1.plot(epochs_range, train_acc, label='train')
+#     ax1.plot(epochs_range, test_acc, label='test')
+#     ax1.legend()
+#     ax1.set_xlabel('epoch')
+#     ax1.set_ylabel('accuracy')
+#     ax1.set_title('Accuracy')
 
-    ax1.plot(epochs_range, train_acc, label='train')
-    ax1.plot(epochs_range, test_acc, label='test')
-    ax1.legend()
-    ax1.set_xlabel('epoch')
-    ax1.set_ylabel('accuracy')
-    ax1.set_title('Accuracy')
+#     ax2.plot(epochs_range, train_loss, label='train')
+#     ax2.plot(epochs_range, test_loss, label='test')
+#     ax2.legend()
+#     ax2.set_xlabel('epoch')
+#     ax2.set_ylabel('loss')
+#     ax2.set_title('Loss')
 
-    ax2.plot(epochs_range, train_loss, label='train')
-    ax2.plot(epochs_range, test_loss, label='test')
-    ax2.legend()
-    ax2.set_xlabel('epoch')
-    ax2.set_ylabel('loss')
-    ax2.set_title('Loss')
+#     plt.suptitle(f'{model_name} @ {dataset_name}')
+#     plt.savefig(plot_path)
 
-    plt.suptitle(f'{model_name} @ {dataset_name}')
-    plt.savefig(plot_path)
+# def result_plot(model_name, dataset_name, plot_path,
+#                 X_train, y_train, X_test, y_test, X_reference, y_reference):
+#     plt.rcParams['figure.figsize'] = (20, 10)
+#     plt.rcParams['font.size'] = 25
 
-def result_plot(model_name, dataset_name, plot_path,
-                X_train, y_train, X_test, y_test, X_reference, y_reference):
-    plt.rcParams['figure.figsize'] = (20, 10)
-    plt.rcParams['font.size'] = 25
+#     fig, (ax1, ax2) = plt.subplots(1, 2)
 
-    fig, (ax1, ax2) = plt.subplots(1, 2)
+#     ax1.plot(X_reference, y_reference, label='ref')
+#     ax1.scatter(X_train, y_train, label='train')
+#     ax1.legend()
+#     ax1.set_xlabel('X')
+#     ax1.set_ylabel('y')
+#     ax1.set_title('Train')
 
-    ax1.plot(X_reference, y_reference, label='ref')
-    ax1.scatter(X_train, y_train, label='train')
-    ax1.legend()
-    ax1.set_xlabel('X')
-    ax1.set_ylabel('y')
-    ax1.set_title('Train')
+#     ax2.plot(X_reference, y_reference, label='ref')
+#     ax2.scatter(X_test, y_test, label='test')
+#     ax2.legend()
+#     ax2.set_xlabel('X')
+#     ax2.set_ylabel('y')
+#     ax2.set_title('Test')
 
-    ax2.plot(X_reference, y_reference, label='ref')
-    ax2.scatter(X_test, y_test, label='test')
-    ax2.legend()
-    ax2.set_xlabel('X')
-    ax2.set_ylabel('y')
-    ax2.set_title('Test')
+#     plt.suptitle(f'{model_name} @ {dataset_name}')
+#     plt.savefig(plot_path)
 
-    plt.suptitle(f'{model_name} @ {dataset_name}')
-    plt.savefig(plot_path)
+# def create_results_directory(directory, results_directory_name=None):
+#     if results_directory_name is None:
+#         now = datetime.datetime.now()
+#         doe_date = '-'.join([str(now.year), str(now.month), str(now.day)]) + '_' + '-'.join([str(now.hour), str(now.minute)])
+#         doe_directory = os.path.join(directory, doe_date)
+#     else:
+#         doe_directory = os.path.join(directory, results_directory_name)
+#         if not os.path.exists(doe_directory):
+#             os.mkdir(doe_directory)
+#         else:
+#             count = 1
+#             while os.path.exists(doe_directory):
+#                 doe_directory = os.path.join(directory, results_directory_name + f'_{count}')
+#                 count += 1
+#             os.mkdir(doe_directory)
+#     return doe_directory
 
-def create_results_directory(directory, results_directory_name=None):
-    if results_directory_name is None:
-        now = datetime.datetime.now()
-        doe_date = '-'.join([str(now.year), str(now.month), str(now.day)]) + '_' + '-'.join([str(now.hour), str(now.minute)])
-        doe_directory = os.path.join(directory, doe_date)
-    else:
-        doe_directory = os.path.join(directory, results_directory_name)
-        if not os.path.exists(doe_directory):
-            os.mkdir(doe_directory)
-        else:
-            count = 1
-            while os.path.exists(doe_directory):
-                doe_directory = os.path.join(directory, results_directory_name + f'_{count}')
-                count += 1
-            os.mkdir(doe_directory)
-    return doe_directory
+# def create_doe_experiments(doe_parameters, method='fullfact'):
+#     levels = [len(val) for val in doe_parameters.values()]
+#     if method == 'fullfact':
+#         doe = fullfact(levels)
+#     else:
+#         print('Method not supported, using fullfact')
+#         doe = fullfact(levels)
+#     experiments = []
+#     for experiment in doe:
+#         experiment_dict = {}
+#         for i, key in enumerate(doe_parameters.keys()):
+#             experiment_dict[key] = doe_parameters[key][int(experiment[i])]
+#         experiments.append(experiment_dict)
+#     return tuple(experiments)
 
-def create_doe_experiments(doe_parameters, method='fullfact'):
-    levels = [len(val) for val in doe_parameters.values()]
-    if method == 'fullfact':
-        doe = fullfact(levels)
-    else:
-        print('Method not supported, using fullfact')
-        doe = fullfact(levels)
-    experiments = []
-    for experiment in doe:
-        experiment_dict = {}
-        for i, key in enumerate(doe_parameters.keys()):
-            experiment_dict[key] = doe_parameters[key][int(experiment[i])]
-        experiments.append(experiment_dict)
-    return tuple(experiments)
-
-def create_experiment_directory(doe_directory, n_exp):
-    experiment_directory = os.path.join(doe_directory, f'Experiment {n_exp}')
-    if not os.path.exists(experiment_directory):
-        os.mkdir(experiment_directory)
-    return experiment_directory
+# def create_experiment_directory(doe_directory, n_exp):
+#     experiment_directory = os.path.join(doe_directory, f'Experiment {n_exp}')
+#     if not os.path.exists(experiment_directory):
+#         os.mkdir(experiment_directory)
+#     return experiment_directory
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
     parser.add_argument('--model', type=str, default='SimpleMLP', help=f'architecture to use',
                         choices=list(MODELS.keys()))
-    parser.add_argument('--dataset', type=str, default='PARABOLA', help='dataset to use',
+    parser.add_argument('--dataset', type=str, default='SHIFTED-PARABOLA', help='dataset to use',
                         choices=list(DATASETS.keys()))
 
     parser.add_argument('--device', type=str, choices=['cuda', 'cpu'], default='cuda',
@@ -274,9 +274,9 @@ if __name__ == '__main__':
                                                                    'samples-level batches')
     parser.add_argument('--save-model', action='store_true', default=True,
                         help='For Saving the current Model')
-    parser.add_argument('--results_directory_name', required=False, type=str, default='CBO_PARA_RESULTS',
+    parser.add_argument('--results_directory_name', required=False, type=str, default='CBO_SHIFTED-PARABOLA',
                         help='name under which the results should be saved, like plots and such')
-    parser.add_argument('--n_runs', type=int, default=10,
+    parser.add_argument('--n_runs', type=int, default=3,
                         help='DoE Parameter; how often each configuration should be run to compute an average')
 
     doe = True
@@ -300,7 +300,7 @@ if __name__ == '__main__':
 
     print(results_directory)
 
-    if args.dataset == 'PARABOLA':
+    if args.dataset == 'PARABOLA' or args.dataset == 'SHIFTED-PARABOLA':
         problem_type = 'regression'
     elif args.dataset == 'MNIST':
         problem_type = 'classification'
@@ -326,14 +326,14 @@ if __name__ == '__main__':
         setup_file = os.path.join(results_directory, setup_file_name)
         plot_file = os.path.join(results_directory, plot_file_name)
 
-        if args.dataset == 'PARABOLA':
-            doe_models = ['PARA_5x5x5', 'PARA_7x7', 'PARA_25']
-            doe_epochs = [5, 10, 15]
-            doe_particles = [10, 100, 200]
+        if args.dataset == 'PARABOLA' or args.dataset == 'SHIFTED-PARABOLA':
+            doe_models = ['PARA_25']
+            doe_epochs = [5]
+            doe_particles = [200, 500]
         else:
             doe_models = ['MNIST_726x10', 'MNIST_726x10x10', 'MNIST_726x20']
-            doe_epochs = [5, 10, 15]
-            doe_particles = [10, 100, 200]
+            doe_epochs = [15]
+            doe_particles = [100, 200]
             # doe_epochs = [1, 2]
             # doe_particles = [4, 5]
 
@@ -381,9 +381,21 @@ if __name__ == '__main__':
                 elapsed_time = time.time() - start_time
                 accuracies_train, accuracies_test, losses_train, losses_test = result
 
+                plot_dataloader_train, plot_dataloader_test = DATASETS[args.dataset](train_batch_size=60000,
+                                                               test_batch_size=10000)
+
+                # Should only be one iteration since batch_size = number of samples)
+                for X, y in (plot_dataloader_train):
+                    nn_output = model(X).detach()
+                    fig, ax = plt.subplots()
+                    ax.scatter(X, y, label='Reference')
+                    ax.scatter(X, nn_output, label='Prediction')
+                    ax.legend()
+                    fig.savefig(os.path.join(experiment_directory, 'prediction_' + args.plot_path))
+
                 print('Elapsed time: {:.1f} seconds'.format(elapsed_time))
                 if args.build_plot:
-                    build_plot(epochs, args.model, args.dataset, os.path.join(experiment_directory, 'loss_' + args.plot_path), *result)
+                    build_plot(epochs, nn_model, args.dataset, os.path.join(experiment_directory, 'loss_' + args.plot_path), *result)
 
                 best_epoch = np.argmin(np.array(losses_test))
                 best_accuracy_test = accuracies_test[best_epoch]
