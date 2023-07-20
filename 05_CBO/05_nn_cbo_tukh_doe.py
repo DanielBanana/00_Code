@@ -18,7 +18,8 @@ config.update("jax_enable_x64", True)
 from functools import partial
 
 sys.path.insert(1, os.getcwd())
-from plot_results import plot_results, plot_losses, get_file_path
+# from plot_results import plot_results, plot_losses, get_file_path
+from plot_results import plot_losses, get_file_path
 from fmu_helper import FMUEvaluator
 from cbo_in_python.src.torch_.models import *
 # from cbo_in_python.src.datasets import load_mnist_dataloaders, load_parabola_dataloaders, f
@@ -345,7 +346,7 @@ def train(model:Hybrid_FMU or Hybrid_Python,
 
     if problem_type == 'classification':
         loss_fn = Loss(F.nll_loss, optimizer)
-    else:
+    elif problem_type == 'regression':
         # loss_fn = Loss(F.mse_loss, augment_optimizer)
         loss_fn = Loss(F.mse_loss, optimizer)
 
@@ -356,7 +357,6 @@ def train(model:Hybrid_FMU or Hybrid_Python,
         losses_epoch_train = []
         for batch_idx, (input_train, output_train) in enumerate(train_dataloader):
             input_train, output_train = input_train.to(device), output_train.to(device)
-
             # Calculate current solution
             if residual:
                 # If we calculate on the residual the inputs are the states of the ODE
@@ -375,7 +375,6 @@ def train(model:Hybrid_FMU or Hybrid_Python,
                 # of the hybrid ODE
                 model.t = input_train.detach().numpy()
                 model.z0 = output_train[0]
-
                 if isinstance(model, Hybrid_FMU):
                     pred_train = torch.tensor(model(pointers))
                 else:
@@ -392,10 +391,11 @@ def train(model:Hybrid_FMU or Hybrid_Python,
             optimizer.step()
 
             if batch_idx % eval_freq == 0:
-                print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
+                print('Train Epoch: {} [{}/{} ({:.0f}%)]\t Batch Loss: {:.6f}'.format(
                     epoch, batch_idx * len(input_train), len(train_dataloader.dataset),
                     100. * batch_idx / len(train_dataloader), loss_train.item()))
 
+        # CALCULATE THE LOSS OVER THE WHOLE TRAJECTORY, NO BATCHES
         if residual:
             if problem_type == 'classification':
                 # loss_train, train_acc = _evaluate_class(model, X, y, F.nll_loss)
@@ -410,85 +410,80 @@ def train(model:Hybrid_FMU or Hybrid_Python,
             else:
                 pred_train_whole_trajectory = torch.tensor(model(stim=False))
         loss_whole_trajectory = _evaluate_reg(pred_train_whole_trajectory, train_dataloader.dataset.y, F.mse_loss).cpu()
+        acc_whole_trajectory = 0.0
+        losses_train.append(loss_whole_trajectory)
+        accuracies_train.append(acc_whole_trajectory)
 
         if run_file is not None:
             with open(run_file, 'a') as file:
-                file.write('\nEpoch: {} \tTrain Loss: {:.6f}'.format(epoch, loss_whole_trajectory.item()))
-        print('\nEpoch: {} \tTrain Loss: {:.6f}'.format(epoch, loss_whole_trajectory.item()))
+                file.write('Trajectory Loss (Training): {:.5f}'.format(loss_whole_trajectory.item()))
+        print('Trajectory Loss (Training): : {:.5f}'.format(loss_whole_trajectory.item()))
 
-        # Evaluate test set
+        # EVALUATE TEST SET
+        # with torch.no_grad():
+        #     losses = []
+        #     accuracies = []
+        #     for input_test, output_test in test_dataloader:
+        #         input_test, output_test = input_test.to(device), output_test.to(device)
+        #         if residual:
+        #             if problem_type == 'classification':
+        #                 pass
+        #                 # loss, acc = _evaluate_class(model, X_test, y_test, F.nll_loss)
+        #             else:
+        #                 pred_test = model(input_test)
+        #                 loss = _evaluate_reg(pred_test, output_test, F.mse_loss)
+        #                 train_acc = 0.0
+        #         else:
+        #             model.t = input_test.detach().numpy()
+        #             model.z0 = output_test[0]
+        #             if isinstance(model, Hybrid_FMU):
+        #                 pred_test = torch.tensor(model(pointers))
+        #             else:
+        #                 pred_test = torch.tensor(model(stim=False))
+
+        #         loss = _evaluate_reg(pred_test, output_test, F.mse_loss)
+        #         acc = 0.0
+        #         losses.append(loss.cpu())
+        #         accuracies.append(acc)
+        #     loss_test, acc_test = np.mean(losses), np.mean(accuracies)
+        #     if batch_idx == n_batches - 1:
+        #         accuracies_test.append(acc_test)
+        #         losses_test.append(loss_test)
+
         with torch.no_grad():
-            losses = []
-            accuracies = []
-            for input_test, output_test in test_dataloader:
-                input_test, output_test = input_test.to(device), output_test.to(device)
-                if residual:
-                    if problem_type == 'classification':
-                        pass
-                        # loss, acc = _evaluate_class(model, X_test, y_test, F.nll_loss)
-                    else:
-                        pred_test = model(input_test)
-                        loss = _evaluate_reg(pred_test, output_test, F.mse_loss)
-                        train_acc = 0.0
+            if residual:
+                if problem_type == 'classification':
+                    # loss_train, train_acc = _evaluate_class(model, X, y, F.nll_loss)
+                    pass
                 else:
-                    model.t = input_test.detach().numpy()
-                    model.z0 = output_test[0]
-                    if isinstance(model, Hybrid_FMU):
-                        pred_test = torch.tensor(model(pointers))
-                    else:
-                        pred_test = torch.tensor(model(stim=False))
-
-                loss = _evaluate_reg(pred_test, output_test, F.mse_loss)
-                acc = 0.0
-                losses.append(loss.cpu())
-                accuracies.append(acc)
-            loss_test, acc_test = np.mean(losses), np.mean(accuracies)
-            if batch_idx == n_batches - 1:
-                accuracies_test.append(acc_test)
-                losses_test.append(loss_test)
-
-        if residual:
-            if problem_type == 'classification':
-                # loss_train, train_acc = _evaluate_class(model, X, y, F.nll_loss)
-                pass
+                    pred_test_whole_trajectory = model(test_dataloader.dataset.x)
             else:
-                pred_test_whole_trajectory = model(test_dataloader.dataset.x)
-        else:
-            model.t = test_dataloader.dataset.x
-            model.z0 = test_dataloader.dataset.y[0]
-            if isinstance(model, Hybrid_FMU):
-                pred_test_whole_trajectory = torch.tensor(model(pointers))
-            else:
-                pred_test_whole_trajectory = torch.tensor(model(stim=False))
-        loss_whole_trajectory = _evaluate_reg(pred_test_whole_trajectory, test_dataloader.dataset.y, F.mse_loss).cpu()
-        print('\nEpoch: {} \tTest Loss: {:.6f}'.format(epoch, loss_whole_trajectory.item()))
+                model.t = test_dataloader.dataset.x
+                model.z0 = test_dataloader.dataset.y[0]
+                if isinstance(model, Hybrid_FMU):
+                    pred_test_whole_trajectory = torch.tensor(model(pointers))
+                else:
+                    pred_test_whole_trajectory = torch.tensor(model(stim=False))
+            loss_whole_trajectory = _evaluate_reg(pred_test_whole_trajectory, test_dataloader.dataset.y, F.mse_loss).cpu()
+            acc_whole_trajectory = 0.0
+        losses_test.append(loss_whole_trajectory)
+        accuracies_test.append(acc_whole_trajectory)
 
         # print('\nTest set: Average loss: {:.4f}, Accuracy: ({:.0f}%)\n'.format(loss_test, acc_test*100))
         if run_file is not None:
             with open(run_file, 'a') as file:
-                file.write('\nEpoch: {} \tTest Loss: {:.6f}'.format(epoch, loss_whole_trajectory.item()))
+                file.write('Trajectory Loss (Testing): {:.5f}'.format(loss_whole_trajectory.item()))
+        print('Trajectory Loss (Testing): {:.5f}'.format(loss_whole_trajectory.item()))
 
-            # print(
-            #     f'Epoch: {epoch + 1:2}/{epochs}, batch: {batch + 1:4}/{n_batches}, train loss: {loss_train:8.3f}, '
-            #     f'train acc: {train_acc:8.3f}, test loss: {loss_test:8.3f}, test acc: {test_acc:8.3f}, alpha: {augment_optimizer.alpha:8.3f}, sigma: {augment_optimizer.sigma:8.3f}',
-            #     flush=True)
-
-        accuracies_train.append(np.mean(accuracies_epoch_train))
-        losses_train.append(np.mean(losses_epoch_train))
-
-        if epoch > 0 and losses_test[-1] < best_loss:
-            best_loss = loss_test
-            torch.save({
-                'epoch': epochs,
-                'model_state_dict': hybrid_model.state_dict(),
-                'loss': losses_train[-1],
-                'loss_test': losses_test[-1],
-                # 'residual_loss': best_experiment['residual_loss'],
-                # 'residual_loss_test': best_experiment['residual_loss_test']
+        if losses_test[-1] < best_loss:
+            best_loss = losses_test[-1]
+            torch.save({'epoch': epoch,
+                        'model_state_dict': hybrid_model.state_dict(),
+                        'loss': losses_train[-1],
+                        'loss_test': losses_test[-1],
             }, os.path.join(plotting_reference_data['results_directory'], 'best_params.pt'))
 
         if epoch % eval_freq == 0:
-
             t_train = plotting_reference_data['t_train']
             t_test = plotting_reference_data['t_test']
             z_ref_train = plotting_reference_data['z_ref_train']
@@ -513,10 +508,6 @@ def train(model:Hybrid_FMU or Hybrid_Python,
             result_plot_multi_dim('Custom', 'VdP', os.path.join(results_directory, f'Epoch {epoch}.png'),
                         t_train, pred_train, t_test, pred_test,
                         np.hstack((t_train, t_test)), np.vstack((z_ref_train, z_ref_test)))
-
-        # print(f'Epoch: {epoch + 1:2}/{epochs}, batch: {batch_idx + 1:4}/{n_batches}, train loss: {losses_train[-1]:8.3f}, '
-        #       f'train acc: {accuracies_train[-1]:8.3f}, test loss: {losses_test[-1]:8.3f}, test acc: {accuracies_test[-1]:8.3f}, alpha: {optimizer.alpha:8.3f}, sigma: {optimizer.sigma:8.6f}, dt: {optimizer.dt:8.6f}',
-        #       flush=True)
 
         if cooling:
             optimizer.cooling_step()
@@ -730,6 +721,75 @@ def create_clean_mini_batch(n_mini_batches, x_ref, t):
     ts = [t[s[i]:s[i]+mini_batch_size] for i in range(n_mini_batches)]
     return x0, targets, ts
 
+def restore_parameters(hybrid_model, parameter_file):
+    try:
+        ckpt = torch.load(parameter_file)
+        hybrid_model.load_state_dict(ckpt['model_state_dict'])
+        print('Continuing training with previous parameters')
+    except:
+        print('Could not find model to load')
+    return hybrid_model
+
+def plot_loss_and_prediction(result, hybrid_model, args, reference_ode_parameters, plotting_reference_data):
+    t_train = plotting_reference_data['t_train']
+    t_test = plotting_reference_data['t_test']
+    z_ref_train = plotting_reference_data['z_ref_train']
+    z_ref_test = plotting_reference_data['z_ref_test']
+    results_directory = plotting_reference_data['results_directory']
+
+    build_plot(args.epochs, args.model, args.dataset, os.path.join(results_directory, 'Loss.png'), *result)
+
+    # If we decide to plot the results, we want to plot on the trajectory
+    # and not only on the residuals we train on in this case.
+    # We therefore need a Non residual model
+    augment_model = hybrid_model.augment_model
+    plot_model = Hybrid_Python(reference_ode_parameters, augment_model, z_ref_train[0], t_train, mode='trajectory')
+    pred_train = torch.tensor(plot_model())
+
+    plot_model.t = t_test
+    plot_model.z0 = z0_test
+    pred_test = torch.tensor(plot_model())
+
+    result_plot_multi_dim('Custom', 'VdP', os.path.join(results_directory, f'Final.png'),
+                t_train, pred_train, t_test, pred_test,
+                np.hstack((t_train, t_test)), np.vstack((z_ref_train, z_ref_test)))
+
+def dump_best_experiment(best_experiment, setup_file, results_file):
+    yaml_dict = best_experiment.copy()
+    yaml_dict['loss'] = float(best_experiment['loss'])
+    yaml_dict['loss_test'] = float(best_experiment['loss_test'])
+    del yaml_dict['model']
+
+    with open(setup_file, 'w') as file:
+        yaml.dump(yaml_dict, file)
+
+    with open(results_file, 'a') as file:
+        file.write(f'Best experiment: {best_experiment["n_exp"]}')
+        file.write('\n')
+
+def save_best_experiment(best_experiment, hybrid_model, args, parameter_file):
+    torch.save({
+        'epoch': args.epochs,
+        'model_state_dict': hybrid_model.state_dict(),
+        'loss': best_experiment['loss'],
+        'loss_test': best_experiment['loss_test'],
+        'time': best_experiment['time']
+    }, parameter_file)
+
+def get_best_parameters(hybrid_model, results_directory, parameter_file_name='best_params.pt'):
+                                best_param_file = os.path.join(results_directory, parameter_file_name)
+                                ckpt = torch.load(best_param_file)
+                                hybrid_model.load_state_dict(ckpt['model_state_dict'])
+                                return hybrid_model, ckpt
+
+def load_parameters(hybrid_model, parameter_file):
+    try:
+        ckpt = torch.load(parameter_file)
+        hybrid_model.load_state_dict(ckpt['model_state_dict'])
+        print('Continuing training with previous parameters')
+    except:
+        print('Could not find model to load')
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
@@ -769,14 +829,14 @@ if __name__ == '__main__':
     # GENERAL ODE OPTIONS
     parser.add_argument('--start', type=float, default=0.0, help='Start value of the ODE integration')
     parser.add_argument('--end', type=float, default=10.0, help='End value of the ODE integration')
-    parser.add_argument('--n_steps', type=float, default=60001, help='How many integration steps to perform')
+    parser.add_argument('--n_steps', type=float, default=6001, help='How many integration steps to perform')
     parser.add_argument('--ic', type=list, default=[1.0, 0.0], help='initial_condition of the ODE')
     parser.add_argument('--aug_state', type=bool, default=False, help='Whether or not to use the augemented state for the ODE dynamics')
     parser.add_argument('--aug_dim', type=int, default=4, help='Number of augment dimensions')
 
     # VdP OPTIONS
     parser.add_argument('--kappa', type=float, default=1.0, help='oscillation constant of the VdP oscillation term')
-    parser.add_argument('--mu', type=float, default=3.0, help='damping constant of the VdP damping term')
+    parser.add_argument('--mu', type=float, default=8.53, help='damping constant of the VdP damping term')
     parser.add_argument('--mass', type=float, default=1.0, help='mass constant of the VdP system')
     parser.add_argument('--stimulate', type=bool, default=False, help='Whether or not to use the stimulated dynamics')
 
@@ -788,7 +848,7 @@ if __name__ == '__main__':
 
     # GENERAL OPTIMIZER OPTIONS
     # CBO OPTIONS
-    parser.add_argument('--epochs', type=int, default=100, help='train for EPOCHS epochs')
+    parser.add_argument('--epochs', type=int, default=3, help='train for EPOCHS epochs')
     parser.add_argument('--batch_size', type=int, default=60, help='batch size (for samples-level batching)')
     parser.add_argument('--particles', type=int, default=75, help='')
     parser.add_argument('--particles_batch_size', type=int, default=10, help='batch size '
@@ -831,10 +891,9 @@ if __name__ == '__main__':
         if args.device == 'cuda' and not torch.cuda.is_available():
             print('Cuda is unavailable. Using CPU instead.')
             device = 'cpu'
-        use_multiprocessing = args.use_multiprocessing
-        if device != 'cpu' and use_multiprocessing:
+        if device != 'cpu' and args.use_multiprocessing:
             print('Unable to use multiprocessing on GPU')
-            use_multiprocessing = False
+            args.use_multiprocessing = False
         device = torch.device(device)
 
         results_name =  'results.txt'
@@ -847,25 +906,36 @@ if __name__ == '__main__':
 
         experiment_parameters = ('alpha', 'sigma', 'l', 'dt', 'particles', 'cooling', 'layer_size', 'layers', 'batch_size')
 
-        if args.restore:
-            restore_directory = os.path.join(directory, args.restore_name)
-            if not os.path.exists(restore_directory):
-                print('Restore path does not exist')
-                exit(1)
-            restore_results_file_path = os.path.join(restore_directory, results_name)
-            restore_setup_file = os.path.join(restore_directory, setup_file_name)
-            restore_parameter_file = os.path.join(restore_directory, parameter_file_name)
-            # Try to restore a previous experiment run
-            with open(restore_setup_file, 'r') as file:
-                restore_best_experiment = yaml.safe_load(file)
+        # CREATE REFERENCE SOLUTION
+        z0 = np.array(args.ic)
+        reference_ode_parameters = [args.kappa, args.mu, args.mass]
+        t_train, z_ref_train, t_test, z_ref_test, z0_test = create_reference_solution(args.start, args.end, args.n_steps, z0, reference_ode_parameters, ode_integrator=f_euler_python)
+        train_residual_inputs, train_residual_outputs, test_residual_inputs, test_residual_outputs = create_residual_reference_solution(t_train, z_ref_train, t_test, z_ref_test, reference_ode_parameters)
 
-            for k,v in restore_best_experiment.items():
-                vars(args)[k] = v
+        # Save the reference data for plotting during training
+        plotting_reference_data = {'t_train': t_train,
+                                    't_test': t_test,
+                                    'z_ref_train': z_ref_train,
+                                    'z_ref_test': z_ref_test,
+                                    'results_directory': results_directory}
+
+        # if args.restore:
+        #     restore_directory = os.path.join(directory, args.restore_name)
+        #     if not os.path.exists(restore_directory):
+        #         print('Restore path does not exist')
+        #         # exit(1)
+        #     restore_results_file_path = os.path.join(restore_directory, results_name)
+        #     restore_setup_file = os.path.join(restore_directory, setup_file_name)
+        #     restore_parameter_file = os.path.join(restore_directory, parameter_file_name)
+        #     # Try to restore a previous experiment run
+        #     with open(restore_setup_file, 'r') as file:
+        #         restore_best_experiment = yaml.safe_load(file)
+
+        #     for k,v in restore_best_experiment.items():
+        #         vars(args)[k] = v
 
         if args.doe:
             print('Performing Design of Experiment (DoE)')
-            # DoE Parameters
-
             if args.residual:
                 # residual_doe_parameters = OrderedDict({'alpha': [1e0, 1e2]})
 
@@ -885,7 +955,7 @@ if __name__ == '__main__':
                     trajectory_doe_parameters = OrderedDict({'batch_size': [60]})
                 else:
                     trajectory_doe_parameters = OrderedDict({'alpha': [50],
-                                                            'sigma': [ 0.4**0.5],
+                                                            'sigma': [0.4**0.5],
                                                             'l': [1.0],
                                                             'dt': [0.1],
                                                             'particles':[500],
@@ -897,29 +967,29 @@ if __name__ == '__main__':
                 print(f'Trajectory DoE Parameters: {trajectory_doe_parameters}')
 
 
-            if args.restore:
-                # If we restore the best setup of a previous DoE run the we omit all the
-                # parameters checked in the previous run
-                print('Restoring Parameters from previous DoE run. Removing already checked parameters...')
-                for k,v in restore_best_experiment['setup'].items():
-                    try:
-                        residual_doe_parameters.pop(k)
-                    except:
-                        pass
-                    try:
-                        trajectory_doe_parameters.pop(k)
-                    except:
-                        pass
-                if args.residual:
-                    if len(residual_doe_parameters) == 0:
-                        print('No Parameters left for DoE. Performing just one run with the restored parameters')
-                    else:
-                        print(f'Residual DoE Parameters: {residual_doe_parameters}')
-                if args.trajectory:
-                    if len(trajectory_doe_parameters) == 0:
-                        print('No Parameters left for DoE. Performing just one run with the restored parameters')
-                    else:
-                        print(f'Trajectory DoE Parameters: {trajectory_doe_parameters}')
+            # if args.restore:
+            #     # If we restore the best setup of a previous DoE run the we omit all the
+            #     # parameters checked in the previous run
+            #     print('Restoring Parameters from previous DoE run. Removing already checked parameters...')
+            #     for k,v in restore_best_experiment['setup'].items():
+            #         try:
+            #             residual_doe_parameters.pop(k)
+            #         except:
+            #             pass
+            #         try:
+            #             trajectory_doe_parameters.pop(k)
+            #         except:
+            #             pass
+            #     if args.residual:
+            #         if len(residual_doe_parameters) == 0:
+            #             print('No Parameters left for DoE. Performing just one run with the restored parameters')
+            #         else:
+            #             print(f'Residual DoE Parameters: {residual_doe_parameters}')
+            #     if args.trajectory:
+            #         if len(trajectory_doe_parameters) == 0:
+            #             print('No Parameters left for DoE. Performing just one run with the restored parameters')
+            #         else:
+            #             print(f'Trajectory DoE Parameters: {trajectory_doe_parameters}')
 
             if args.fmu:
                 print('DoE for FMU not yet implemented')
@@ -928,95 +998,54 @@ if __name__ == '__main__':
             else:
                 if args.residual:
                     print('Starting Residual DoE Run...')
-
-                    # CREATE REFERENCE SOLUTION
-                    z0 = np.array(args.ic)
-                    reference_ode_parameters = [args.kappa, args.mu, args.mass]
-                    t_train, z_ref_train, t_test, z_ref_test, z0_test = create_reference_solution(args.start, args.end, args.n_steps, z0, reference_ode_parameters, ode_integrator=f_euler_python)
-                    train_residual_inputs, train_residual_outputs, test_residual_inputs, test_residual_outputs = create_residual_reference_solution(t_train, z_ref_train, t_test, z_ref_test, reference_ode_parameters)
-
-                    # Save the reference data for plotting during training
-                    plotting_reference_data = {'t_train': t_train,
-                                               't_test': t_test,
-                                               'z_ref_train': z_ref_train,
-                                               'z_ref_test': z_ref_test,
-                                               'results_directory': results_directory}
+                    # CONVERT THE REFERENCE DATA TO A DATASET
+                    ####################################################################################
+                    train_dataset = create_generic_dataset(torch.tensor(train_residual_inputs), torch.tensor(train_residual_outputs))
+                    test_dataset = create_generic_dataset(torch.tensor(test_residual_inputs), torch.tensor(test_residual_outputs))
+                    train_dataloader, test_dataloader = load_generic_dataloaders(train_dataset=train_dataset,
+                                                                                train_batch_size=args.batch_size if args.batch_size < len(train_dataset) else len(train_dataset),
+                                                                                test_dataset=test_dataset,
+                                                                                test_batch_size=args.batch_size if args.batch_size < len(test_dataset) else len(test_dataset),
+                                                                                shuffle=False)
 
                     if len(residual_doe_parameters) != 0:
                         # PREPARE DoE
-                        with open(results_file, 'a') as file:
-                            file.writelines(f'VdP Setup: kappa: {args.kappa}, mu: {args.mu}, mass: {args.mass}, Start: {args.start}, End: {args.end}, Steps: {args.n_steps}')
-                            file.write('\n')
-
                         doe_start_time = time.time()
-
                         experiments = create_doe_experiments(residual_doe_parameters, method='fullfact')
                         experiment_losses = []
-                        experiment_strings = []
-                        best_experiment = {'n_exp': None,
-                                           'setup': {},
-                                           'loss': np.inf,
-                                           'loss_test': np.inf,
-                                           'residual_loss': np.inf,
-                                           'residual_loss_test': np.inf,
-                                           'model': None,
-                                           'time': 0.0}
+                        exp_dicts = []
+                        best_experiment = 0
 
                         # EXECUTE DoE
                         for n_exp, experiment in enumerate(experiments):
-
-                            for parameter in experiment_parameters:
-                                if parameter not in experiment.keys():
-                                    experiment[parameter] = vars(args)[parameter]
-
                             experiment_start_time = time.time()
-
-                            experiment_directory = create_experiment_directory(results_directory, n_exp)
-
-                            residual_directory, checkpoint_directory = create_results_subdirectories(results_directory=experiment_directory, trajectory=False, residual=True)
-                            plotting_reference_data['results_directory'] = residual_directory
-
-                            if args.restore:
-                                restored_parameters = restore_best_experiment['setup']
-                                experiment_strings.append(f'Residual Experiment {n_exp+1}/{len(experiments)} - {experiment} (restored parameters: {restored_parameters}')
-                            else:
-                                experiment_strings.append(f'Residual Experiment {n_exp+1}/{len(experiments)} - {experiment}')
-                            print(experiment_strings[-1])
+                            print(f'Residual Experiment {n_exp+1}/{len(experiments)} - {experiment}')
 
                             # Write the experiment values into the args NameSpace
                             for k, v in experiment.items():
                                 vars(args)[k] = v
 
-                            # CONVERT THE REFERENCE DATA TO A DATASET
-                            ####################################################################################
-                            train_dataset = create_generic_dataset(torch.tensor(train_residual_inputs), torch.tensor(train_residual_outputs))
-                            test_dataset = create_generic_dataset(torch.tensor(test_residual_inputs), torch.tensor(test_residual_outputs))
+                            experiment_directory = create_experiment_directory(results_directory, n_exp)
+                            residual_directory, checkpoint_directory = create_results_subdirectories(results_directory=experiment_directory, trajectory=False, residual=True)
+                            plotting_reference_data['results_directory'] = residual_directory
 
-                            train_dataloader, test_dataloader = load_generic_dataloaders(train_dataset=train_dataset,
-                                                                                        train_batch_size=args.batch_size if args.batch_size < len(train_dataset) else len(train_dataset),
-                                                                                        test_dataset=test_dataset,
-                                                                                        test_batch_size=args.batch_size if args.batch_size < len(test_dataset) else len(test_dataset),
-                                                                                        shuffle=False)
+                            # if args.restore:
+                            #     restored_parameters = restore_best_experiment['setup']
+                            #     experiment_strings.append(f'Residual Experiment {n_exp+1}/{len(experiments)} - {experiment} (restored parameters: {restored_parameters}')
+                            # else:
 
                             # TRAINING
                             ####################################################################################
                             layers = layers = [2] + [args.layer_size]*args.layers + [1]
                             augment_model = CustomMLP(layers)
                             hybrid_model = Hybrid_Python(reference_ode_parameters, augment_model, z0, t_train, mode='residual')
-
-                            if args.restore:
-                                try:
-                                    ckpt = torch.load(restore_parameter_file)
-                                    hybrid_model.load_state_dict(ckpt['model_state_dict'])
-                                    print(f'Successfully restored parameters from {args.restore_name}')
-                                except:
-                                    print('Could not find residual model to load')
-
+                            # if args.restore:
+                            #     hybrid_model = restore_parameters(hybrid_model, restore_parameter_file)
                             result = train(model=hybrid_model,
                                         train_dataloader=train_dataloader,
                                         test_dataloader=test_dataloader,
                                         device=device,
-                                        use_multiprocessing=use_multiprocessing,
+                                        use_multiprocessing=args.use_multiprocessing,
                                         processes=args.processes,
                                         epochs=args.epochs,
                                         particles=args.particles,
@@ -1035,106 +1064,54 @@ if __name__ == '__main__':
                                         residual=True,
                                         plotting_reference_data=plotting_reference_data)
                             experiment_time = time.time() - experiment_start_time
-                            # print(f'Experiment time: {(time.time() - experiment_time):3.1f}s')
-                            accuracies_train, accuracies_test, losses_train, losses_test = result
 
-                            best_param_file = os.path.join(plotting_reference_data['results_directory'], 'best_params.pt')
-                            ckpt = torch.load(best_param_file)
-                            hybrid_model.load_state_dict(ckpt['model_state_dict'])
-                            best_loss_train = ckpt['loss']
-                            best_loss_test = ckpt['loss_test']
+                            hybrid_model, ckpt = get_best_parameters(hybrid_model, residual_directory)
 
-                            experiment_strings[-1] = experiment_strings[-1] + f', Training loss: {best_loss_train:3.10f}, Validation loss: {best_loss_test:3.10f}, Time: {experiment_time:3.3f}'
-                            print(experiment_strings[-1])
+                            exp_dict = {'n_exp': n_exp,
+                                        'setup': experiment,
+                                        'loss': ckpt['loss'],
+                                        'loss_test': ckpt['loss_test'],
+                                        'model': hybrid_model,
+                                        'time': experiment_time}
+                            exp_dicts.append(exp_dict)
 
+                            print(f'Best Epoch ({ckpt["epoch"]}/{args.epochs})- Training loss: {exp_dict["loss"]:3.5f}, Validation loss: {exp_dict["loss_test"]:3.5f}, Time: {experiment_time:3.3f}')
                             with open(results_file, 'a') as file:
-                                file.writelines(experiment_strings[-1])
+                                file.writelines(f'Best Result - Training loss: {exp_dict["loss"]:3.5f}, Validation loss: {exp_dict["loss_test"]:3.5f}, Time: {experiment_time:3.3f}')
                                 file.write('\n')
 
-                            if best_loss_test < best_experiment['residual_loss_test']:
-                                best_experiment['n_exp'] = n_exp
-                                best_experiment['setup'] = experiment
-                                best_experiment['residual_loss'] = best_loss_train
-                                best_experiment['residual_loss_test'] = best_loss_test
-                                best_experiment['model'] = hybrid_model
-                                best_experiment['time'] = experiment_time
-
-                                torch.save({
-                                    'epoch': args.epochs,
-                                    'model_state_dict': hybrid_model.state_dict(),
-                                    'loss': best_experiment['loss'],
-                                    'loss_test': best_experiment['loss_test'],
-                                    'residual_loss': best_experiment['residual_loss'],
-                                    'residual_loss_test': best_experiment['residual_loss_test']
-                                }, parameter_file)
+                            if exp_dict['loss_test'] <= exp_dicts[best_experiment]['loss_test']:
+                                best_experiment = n_exp
+                                save_best_experiment(exp_dict, hybrid_model, args, parameter_file)
 
                             if args.build_plot:
-                                build_plot(args.epochs, args.model, args.dataset, os.path.join(residual_directory, 'Loss.png'), *result)
+                                plot_loss_and_prediction(result, hybrid_model, args, reference_ode_parameters, plotting_reference_data)
 
-                                # If we decide to plot the results, we want to plot on the trajectory
-                                # and not only on the residuals we train on in this case.
-                                # We therefore need a Non residual model
-                                augment_model = hybrid_model.augment_model
-                                plot_model = Hybrid_Python(reference_ode_parameters, augment_model, z0, t_train, mode='trajectory')
-                                pred_train = torch.tensor(plot_model())
-
-                                plot_model.t = t_test
-                                plot_model.z0 = z0_test
-                                pred_test = torch.tensor(plot_model())
-
-                                result_plot_multi_dim('Custom', 'VdP', os.path.join(residual_directory, f'Final.png'),
-                                t_train, pred_train, t_test, pred_test,
-                                np.hstack((t_train, t_test)), np.vstack((z_ref_train, z_ref_test)))
-
-                        yaml_dict = best_experiment.copy()
-                        yaml_dict['residual_loss'] = float(best_experiment['residual_loss'])
-                        yaml_dict['residual_loss_test'] = float(best_experiment['residual_loss_test'])
-                        del yaml_dict['model']
-
-                        with open(setup_file, 'w') as file:
-                            yaml.dump(yaml_dict, file)
-
-                        with open(results_file, 'a') as file:
-                            file.write('Best experiment: \n')
-                            file.writelines(experiment_strings[best_experiment['n_exp']])
-                            file.write('\n')
+                        dump_best_experiment(exp_dicts[best_experiment], setup_file, results_file)
 
                     else:
                         start_time = time.time()
-                        # NO DoE, just one regular run on of CBO on Residuals
-                        # TRAINING
-                        ####################################################################################
+
                         residual_directory, checkpoint_directory = create_results_subdirectories(results_directory=results_directory, trajectory=False, residual=True)
                         plotting_reference_data['results_directory'] = residual_directory
 
                         layers = [2] + [args.layer_size]*args.layers + [1]
                         augment_model = CustomMLP(layers)
-                        hybrid_model = Hybrid_Python(reference_ode_parameters, augment_model, z0, t_train[:args.batch_size], mode='residual')
+                        hybrid_model = Hybrid_Python(reference_ode_parameters, augment_model, z_ref_train[0], t_train[:args.batch_size], mode='residual')
 
-                        if args.restore:
-                            try:
-                                ckpt = torch.load(restore_parameter_file)
-                                hybrid_model.load_state_dict(ckpt['model_state_dict'])
-                                print(f'Successfully restored parameters from {args.restore_name}')
-                            except:
-                                print('Could not find residual model to load')
-
-                        # CONVERT THE REFERENCE DATA TO A DATASET
-                        ####################################################################################
-                        train_dataset = create_generic_dataset(torch.tensor(train_residual_inputs), torch.tensor(train_residual_outputs))
-                        test_dataset = create_generic_dataset(torch.tensor(test_residual_inputs), torch.tensor(test_residual_outputs))
-
-                        train_dataloader, test_dataloader = load_generic_dataloaders(train_dataset=train_dataset,
-                                                                                    train_batch_size=args.batch_size if args.batch_size < len(train_dataset) else len(train_dataset),
-                                                                                    test_dataset=test_dataset,
-                                                                                    test_batch_size=args.batch_size if args.batch_size < len(test_dataset) else len(test_dataset),
-                                                                                    shuffle=False)
+                        # if args.restore:
+                        #     try:
+                        #         ckpt = torch.load(restore_parameter_file)
+                        #         hybrid_model.load_state_dict(ckpt['model_state_dict'])
+                        #         print(f'Successfully restored parameters from {args.restore_name}')
+                        #     except:
+                        #         print('Could not find residual model to load')
 
                         result = train(model=hybrid_model,
                                     train_dataloader=train_dataloader,
                                     test_dataloader=test_dataloader,
                                     device=device,
-                                    use_multiprocessing=use_multiprocessing,
+                                    use_multiprocessing=args.use_multiprocessing,
                                     processes=args.processes,
                                     epochs=args.epochs,
                                     particles=args.particles,
@@ -1155,58 +1132,28 @@ if __name__ == '__main__':
                         print(f'Experiment time: {(time.time() - start_time):3.1f}s')
 
                         if args.build_plot:
-                            build_plot(args.epochs, args.model, args.dataset, os.path.join(residual_directory, 'Loss.png'),
-                                    *result)
-
-                            # If we decide to plot the results, we want to plot on the trajectory
-                            # and not only on the residuals we train on.
-                            # We therefore need a Non residual model
-                            augment_model = hybrid_model.augment_model
-                            plot_model = Hybrid_Python(reference_ode_parameters, augment_model, z0, t_train, mode='trajectory')
-                            pred_train = torch.tensor(plot_model())
-
-                            plot_model.t = t_test
-                            plot_model.z0 = z0_test
-                            pred_test = torch.tensor(plot_model())
-
-                            result_plot_multi_dim('Custom', 'VdP', os.path.join(residual_directory, f'Final.png'),
-                                t_train, pred_train, t_test, pred_test,
-                                np.hstack((t_train, t_test)), np.vstack((z_ref_train, z_ref_test)))
+                            plot_loss_and_prediction(result, hybrid_model, args, reference_ode_parameters, plotting_reference_data)
 
                 if args.trajectory:
-                    # DOE ON TRAJECTORIES
-                    ####################################################################
+                    # CONVERT THE REFERENCE DATA TO A DATASET
+                    ####################################################################################
+                    train_dataset = create_generic_dataset(torch.tensor(t_train), torch.tensor(z_ref_train))
+                    test_dataset = create_generic_dataset(torch.tensor(t_test), torch.tensor(z_ref_test))
 
-                    # CREATE REFERENCE SOLUTION
-                    z0 = np.array(args.ic)
-                    reference_ode_parameters = [args.kappa, args.mu, args.mass]
-                    t_train, z_ref_train, t_test, z_ref_test, z0_test = create_reference_solution(args.start, args.end, args.n_steps, z0, reference_ode_parameters, ode_integrator=f_euler_python)
+                    train_dataloader, test_dataloader = load_generic_dataloaders(train_dataset=train_dataset,
+                                                                                train_batch_size=args.batch_size if args.batch_size < len(train_dataset) else len(train_dataset),
+                                                                                test_dataset=test_dataset,
+                                                                                test_batch_size=args.batch_size if args.batch_size < len(test_dataset) else len(test_dataset),
+                                                                                shuffle=False)
 
-                    # Save the reference data for plotting during training
-                    plotting_reference_data = {'t_train': t_train,
-                                               't_test': t_test,
-                                               'z_ref_train': z_ref_train,
-                                               'z_ref_test': z_ref_test}
 
                     if len(trajectory_doe_parameters) != 0:
                         # PREPARE DoE
-                        with open(results_file, 'a') as file:
-                            file.writelines(f'VdP Setup: kappa: {args.kappa}, mu: {args.mu}, mass: {args.mass}, Start: {args.start}, End: {args.end}, Steps: {args.n_steps}')
-                            file.write('\n')
-
                         doe_start_time = time.time()
-
                         experiments = create_doe_experiments(trajectory_doe_parameters, method='fullfact')
                         experiment_losses = []
-                        experiment_strings = []
-                        best_experiment = {'n_exp': None,
-                                           'setup': {},
-                                           'loss': np.inf,
-                                           'loss_test': np.inf,
-                                           'residual_loss': np.inf,
-                                           'residual_loss_test': np.inf,
-                                           'model': None,
-                                           'time': 0.0}
+                        exp_dicts = []
+                        best_experiment = 0
 
                         if args.residual:
                             # We did a residual DoE run before. Load the best result
@@ -1219,61 +1166,37 @@ if __name__ == '__main__':
                         # EXECUTE DoE
                         for n_exp, experiment in enumerate(experiments):
                             experiment_start_time = time.time()
-
-                            for parameter in experiment_parameters:
-                                if parameter not in experiment.keys():
-                                    experiment[parameter] = vars(args)[parameter]
-
-                            experiment_directory = create_experiment_directory(results_directory, n_exp)
-                            trajectory_directory, checkpoint_directory = create_results_subdirectories(experiment_directory, residual=False, trajectory=True)
-                            plotting_reference_data['results_directory'] = trajectory_directory
-
-                            experiment_strings.append(f'Trajectory Experiment {n_exp}/{len(experiments)} - {experiment}')
-                            print(experiment_strings[-1])
+                            print(f'Trajectory Experiment {n_exp}/{len(experiments)} - {experiment}')
 
                             # Write the experiment values into the args NameSpace
                             for k, v in experiment.items():
                                 vars(args)[k] = v
 
-                            # CONVERT THE REFERENCE DATA TO A DATASET
-                            ####################################################################################
-                            train_dataset = create_generic_dataset(torch.tensor(t_train), torch.tensor(z_ref_train))
-                            test_dataset = create_generic_dataset(torch.tensor(t_test), torch.tensor(z_ref_test))
+                            # Write the experiment values into the args NameSpace
+                            for k, v in experiment.items():
+                                vars(args)[k] = v
 
-                            train_dataloader, test_dataloader = load_generic_dataloaders(train_dataset=train_dataset,
-                                                                                        train_batch_size=args.batch_size if args.batch_size < len(train_dataset) else len(train_dataset),
-                                                                                        test_dataset=test_dataset,
-                                                                                        test_batch_size=args.batch_size if args.batch_size < len(test_dataset) else len(test_dataset),
-                                                                                        shuffle=False)
+                            experiment_directory = create_experiment_directory(results_directory, n_exp)
+                            trajectory_directory, checkpoint_directory = create_results_subdirectories(experiment_directory, residual=False, trajectory=True)
+                            plotting_reference_data['results_directory'] = trajectory_directory
 
                             # TRAINING
                             ####################################################################################
                             layers = [2] + [args.layer_size]*args.layers + [1]
                             augment_model = CustomMLP(layers)
-                            hybrid_model = Hybrid_Python(reference_ode_parameters, augment_model, z0, t_train[:args.batch_size], mode='trajectory')
+                            hybrid_model = Hybrid_Python(reference_ode_parameters, augment_model, z_ref_train[0], t_train[:args.batch_size], mode='trajectory')
 
                             if args.residual:
-                                try:
-                                    ckpt = torch.load(parameter_file)
-                                    hybrid_model.load_state_dict(ckpt['model_state_dict'])
-                                    print('Continuing training with parameters of residual training')
-                                except:
-                                    print('Could not find residual model to load')
+                                restore_parameters(hybrid_model, parameter_file)
 
-                            else:
-                                if args.restore:
-                                    try:
-                                        ckpt = torch.load(restore_parameter_file)
-                                        hybrid_model.load_state_dict(ckpt['model_state_dict'])
-                                        print(f'Successfully restored parameters from {args.restore_name}')
-                                    except:
-                                        print('Could not find residual model to load')
+                            # if args.restore:
+                            #     hybrid_model = restore_parameters(hybrid_model, restore_parameter_file)
 
                             result = train(model=hybrid_model,
                                            train_dataloader=train_dataloader,
                                            test_dataloader=test_dataloader,
                                            device=device,
-                                           use_multiprocessing=use_multiprocessing,
+                                           use_multiprocessing=args.use_multiprocessing,
                                            processes=args.processes,
                                            epochs=args.epochs,
                                            particles=args.particles,
@@ -1293,68 +1216,31 @@ if __name__ == '__main__':
                                            plotting_reference_data=plotting_reference_data,
                                            restore=True)
                             experiment_time = time.time() - experiment_start_time
-                            print(f'Experiment time: {(time.time() - experiment_time):3.1f}s')
-                            accuracies_train, accuracies_test, losses_train, losses_test = result
 
-                            best_param_file = os.path.join(plotting_reference_data['results_directory'], 'best_params.pt')
-                            ckpt = torch.load(best_param_file)
-                            hybrid_model.load_state_dict(ckpt['model_state_dict'])
-                            best_loss_train = ckpt['loss']
-                            best_loss_test = ckpt['loss_test']
+                            hybrid_model, ckpt = get_best_parameters(hybrid_model, residual_directory)
 
-                            experiment_strings[-1] = experiment_strings[-1] + f', Training loss: {best_loss_train:3.10f}, Validation loss: {best_loss_test:3.10f}, Time: {experiment_time:3.3f}'
+                            exp_dict = {'n_exp': n_exp,
+                                        'setup': experiment,
+                                        'loss': ckpt['loss'],
+                                        'loss_test': ckpt['loss_test'],
+                                        'model': hybrid_model,
+                                        'time': experiment_time}
+                            exp_dicts.append(exp_dict)
+
+                            print(f'Best Epoch ({ckpt["epoch"]}/{args.epochs})- Training loss: {exp_dict["loss"]:3.5f}, Validation loss: {exp_dict["loss_test"]:3.5f}, Time: {experiment_time:3.3f}')
                             with open(results_file, 'a') as file:
-                                file.writelines(experiment_strings[-1])
+                                file.writelines(f'Best Result - Training loss: {exp_dict["loss"]:3.5f}, Validation loss: {exp_dict["loss_test"]:3.5f}, Time: {experiment_time:3.3f}')
                                 file.write('\n')
 
-                            if losses_test[-1] < best_experiment['loss_test']:
-                                print('Found better setup, saving parameters...')
-                                best_experiment['n_exp'] = n_exp
-                                best_experiment['setup'] = experiment
-                                best_experiment['loss'] = losses_train[-1]
-                                best_experiment['loss_test'] = losses_test[-1]
-                                best_experiment['model'] = hybrid_model
-                                best_experiment['time'] = experiment_time
-
-                                torch.save({
-                                    'epoch': args.epochs,
-                                    'model_state_dict': hybrid_model.state_dict(),
-                                    'loss': best_experiment['loss'],
-                                    'loss_test': best_experiment['loss_test'],
-                                    'residual_loss': best_experiment['residual_loss'],
-                                    'residual_loss_test': best_experiment['residual_loss_test']
-                                }, parameter_file)
+                            if exp_dict['loss_test'] <= exp_dicts[best_experiment]['loss_test']:
+                                best_experiment = n_exp
+                                save_best_experiment(exp_dict, hybrid_model, args, parameter_file)
 
                             if args.build_plot:
-                                build_plot(args.epochs, args.model, args.dataset, os.path.join(trajectory_directory, 'Loss.png'), *result)
+                                plot_loss_and_prediction(result, hybrid_model, args, reference_ode_parameters, plotting_reference_data)
 
-                                # If we decide to plot the results, we want to plot on the trajectory
-                                # and not only on the residuals we train on in this case.
-                                # We therefore need a Non residual model
-                                augment_model = hybrid_model.augment_model
-                                plot_model = Hybrid_Python(reference_ode_parameters, augment_model, z0, t_train, mode='trajectory')
-                                pred_train = torch.tensor(plot_model())
+                        dump_best_experiment(best_experiment, setup_file, results_file)
 
-                                plot_model.t = t_test
-                                plot_model.z0 = z0_test
-                                pred_test = torch.tensor(plot_model())
-
-                                result_plot_multi_dim('Custom', 'VdP', os.path.join(trajectory_directory, f'Final.png'),
-                                            t_train, pred_train, t_test, pred_test,
-                                            np.hstack((t_train, t_test)), np.vstack((z_ref_train, z_ref_test)))
-
-                        yaml_dict = best_experiment.copy()
-                        yaml_dict['loss'] = float(best_experiment['loss'])
-                        yaml_dict['loss_test'] = float(best_experiment['loss_test'])
-                        del yaml_dict['model']
-
-                        with open(setup_file, 'w') as file:
-                            yaml.dump(yaml_dict, file)
-
-                        with open(results_file, 'a') as file:
-                            file.write('Best experiment: \n')
-                            file.writelines(experiment_strings[best_experiment['n_exp']])
-                            file.write('\n')
                     else:
                         # just one regular run on of CBO on Trajectory
                         f_euler = f_euler_python
@@ -1373,7 +1259,7 @@ if __name__ == '__main__':
                                     train_dataloader=train_dataloader,
                                     test_dataloader=test_dataloader,
                                     device=device,
-                                    use_multiprocessing=use_multiprocessing,
+                                    use_multiprocessing=args.use_multiprocessing,
                                     processes=args.processes,
                                     epochs=args.epochs,
                                     particles=args.particles,
@@ -1393,28 +1279,10 @@ if __name__ == '__main__':
                                     plotting_reference_data=plotting_reference_data)
                         print(f'Elapsed time: {time.time() - start_time} seconds')
 
-                        best_param_file = os.path.join(plotting_reference_data['results_directory'], 'best_params.pt')
-                        ckpt = torch.load(best_param_file)
-                        hybrid_model.load_state_dict(ckpt['model_state_dict'])
-                        best_loss_train = ckpt['loss']
-                        best_loss_test = ckpt['loss_test']
+                        hybrid_model, ckpt = get_best_parameters(hybrid_model, residual_directory)
 
                         if args.build_plot:
-                            build_plot(args.epochs, args.model, args.dataset, os.path.join(trajectory_directory, f'Loss.png'),
-                                    *result)
-
-                            hybrid_model.t = t_train
-                            hybrid_model.z0 = z_ref_train[0]
-                            pred_train = torch.tensor(hybrid_model())
-
-                            hybrid_model.z0 = z_ref_test[0]
-                            hybrid_model.t = t_test
-                            pred_test = torch.tensor(hybrid_model())
-
-                            result_plot_multi_dim('Custom', 'VdP', os.path.join(trajectory_directory, f'Final.png'),
-                                        t_train, pred_train, t_test, pred_test,
-                                        np.hstack((t_train, t_test)), np.vstack((z_ref_train, z_ref_test)))
-
+                            plot_loss_and_prediction(result, hybrid_model, args, reference_ode_parameters, plotting_reference_data)
         else:
             parameter_file_name = 'parameters.pt'
             parameter_file = os.path.join(results_directory, parameter_file_name)
@@ -1477,7 +1345,7 @@ if __name__ == '__main__':
                                 train_dataloader=train_dataloader,
                                 test_dataloader=test_dataloader,
                                 device=device,
-                                use_multiprocessing=use_multiprocessing,
+                                use_multiprocessing=args.use_multiprocessing,
                                 processes=args.processes,
                                 epochs=args.epochs,
                                 particles=args.particles,
@@ -1512,8 +1380,19 @@ if __name__ == '__main__':
                                     np.hstack((t_train, t_test)), np.vstack((z_ref_train, z_ref_test)))
             else:
                 if args.residual:
-                    print('Training on Residuals...')
                     start_time = time.time()
+                    print('Training on Residuals...')
+                    # CONVERT THE REFERENCE DATA TO A DATASET
+                    ####################################################################################
+                    train_dataset = create_generic_dataset(torch.tensor(train_residual_inputs), torch.tensor(train_residual_outputs))
+                    test_dataset = create_generic_dataset(torch.tensor(test_residual_inputs), torch.tensor(test_residual_outputs))
+
+                    train_dataloader, test_dataloader = load_generic_dataloaders(train_dataset=train_dataset,
+                                                                                train_batch_size=args.batch_size if args.batch_size < len(train_dataset) else len(train_dataset),
+                                                                                test_dataset=test_dataset,
+                                                                                test_batch_size=args.batch_size if args.batch_size < len(test_dataset) else len(test_dataset),
+                                                                                shuffle=False)
+
                     residual_directory, checkpoint_directory = create_results_subdirectories(results_directory=results_directory, trajectory=False, residual=True)
 
                     experiment = {}
@@ -1527,50 +1406,26 @@ if __name__ == '__main__':
                                         'residual_loss_test': np.inf,
                                         'time': 0.0}
 
-                    # CREATE REFERENCE SOLUTION
-                    z0 = np.array(args.ic)
-                    reference_ode_parameters = [args.kappa, args.mu, args.mass]
-                    t_train, z_ref_train, t_test, z_ref_test, z0_test = create_reference_solution(args.start, args.end, args.n_steps, z0, reference_ode_parameters, ode_integrator=f_euler_python)
-                    train_residual_inputs, train_residual_outputs, test_residual_inputs, test_residual_outputs = create_residual_reference_solution(t_train, z_ref_train, t_test, z_ref_test, reference_ode_parameters)
-
-                    # Save the reference data for plotting during training
-                    plotting_reference_data = {'t_train': t_train,
-                                               't_test': t_test,
-                                               'z_ref_train': z_ref_train,
-                                               'z_ref_test': z_ref_test,
-                                               'results_directory': residual_directory}
-                    # CONVERT THE REFERENCE DATA TO A DATASET
-                    ####################################################################################
-                    train_dataset = create_generic_dataset(torch.tensor(train_residual_inputs), torch.tensor(train_residual_outputs))
-                    test_dataset = create_generic_dataset(torch.tensor(test_residual_inputs), torch.tensor(test_residual_outputs))
-
-                    train_dataloader, test_dataloader = load_generic_dataloaders(train_dataset=train_dataset,
-                                                                                train_batch_size=args.batch_size if args.batch_size < len(train_dataset) else len(train_dataset),
-                                                                                test_dataset=test_dataset,
-                                                                                test_batch_size=args.batch_size if args.batch_size < len(test_dataset) else len(test_dataset),
-                                                                                shuffle=False)
-
-
                     # TRAINING
                     ####################################################################################
                     layers = layers = [2] + [args.layer_size]*args.layers + [1]
                     augment_model = CustomMLP(layers)
-                    hybrid_model = Hybrid_Python(reference_ode_parameters, augment_model, z0, t_train, mode='residual')
+                    hybrid_model = Hybrid_Python(reference_ode_parameters, augment_model, z_ref_train[0], t_train, mode='residual')
 
-                    # RESTORING PREVIOUS PARAMETERS
-                    if args.restore:
-                        try:
-                            ckpt = torch.load(restore_parameter_file)
-                            hybrid_model.load_state_dict(ckpt['model_state_dict'])
-                            print(f'Successfully restored parameters from {args.restore_name}')
-                        except:
-                            print('Could not find residual model to load')
+                    # # RESTORING PREVIOUS PARAMETERS
+                    # if args.restore:
+                    #     try:
+                    #         ckpt = torch.load(restore_parameter_file)
+                    #         hybrid_model.load_state_dict(ckpt['model_state_dict'])
+                    #         print(f'Successfully restored parameters from {args.restore_name}')
+                    #     except:
+                    #         print('Could not find residual model to load')
 
                     result = train(model=hybrid_model,
                                    train_dataloader=train_dataloader,
                                    test_dataloader=test_dataloader,
                                    device=device,
-                                   use_multiprocessing=use_multiprocessing,
+                                   use_multiprocessing=args.use_multiprocessing,
                                    processes=args.processes,
                                    epochs=args.epochs,
                                    particles=args.particles,
@@ -1617,26 +1472,37 @@ if __name__ == '__main__':
                         yaml.dump(yaml_dict, file)
 
                     if args.build_plot:
-                        build_plot(args.epochs, args.model, args.dataset, os.path.join(residual_directory, 'Loss.png'), *result)
+                        plot_loss_and_prediction(result, hybrid_model, args, reference_ode_parameters, plotting_reference_data)
 
-                        # If we decide to plot the results, we want to plot on the trajectory
-                        # and not only on the residuals we train on in this case.
-                        # We therefore need a Non residual model
-                        augment_model = hybrid_model.augment_model
-                        plot_model = Hybrid_Python(reference_ode_parameters, augment_model, z0, t_train, mode='trajectory')
-                        pred_train = torch.tensor(plot_model())
+                        # build_plot(args.epochs, args.model, args.dataset, os.path.join(residual_directory, 'Loss.png'), *result)
 
-                        plot_model.t = t_test
-                        plot_model.z0 = z0_test
-                        pred_test = torch.tensor(plot_model())
+                        # # If we decide to plot the results, we want to plot on the trajectory
+                        # # and not only on the residuals we train on in this case.
+                        # # We therefore need a Non residual model
+                        # augment_model = hybrid_model.augment_model
+                        # plot_model = Hybrid_Python(reference_ode_parameters, augment_model, z_ref_train[0], t_train, mode='trajectory')
+                        # pred_train = torch.tensor(plot_model())
 
-                        result_plot_multi_dim('Custom', 'VdP', os.path.join(residual_directory, f'Final.png'),
-                        t_train, pred_train, t_test, pred_test,
-                        np.hstack((t_train, t_test)), np.vstack((z_ref_train, z_ref_test)))
+                        # plot_model.t = t_test
+                        # plot_model.z0 = z0_test
+                        # pred_test = torch.tensor(plot_model())
+
+                        # result_plot_multi_dim('Custom', 'VdP', os.path.join(residual_directory, f'Final.png'),
+                        # t_train, pred_train, t_test, pred_test,
+                        # np.hstack((t_train, t_test)), np.vstack((z_ref_train, z_ref_test)))
 
                 if args.trajectory:
                     print('Training on Trajectory...')
-                    # just one regular run on of CBO on Trajectory
+                    # CONVERT THE REFERENCE DATA TO A DATASET
+                    ####################################################################################
+                    train_dataset = create_generic_dataset(torch.tensor(t_train), torch.tensor(z_ref_train))
+                    test_dataset = create_generic_dataset(torch.tensor(t_test), torch.tensor(z_ref_test))
+
+                    train_dataloader, test_dataloader = load_generic_dataloaders(train_dataset=train_dataset,
+                                                                                train_batch_size=args.batch_size,
+                                                                                test_dataset=test_dataset,
+                                                                                test_batch_size=args.batch_size,
+                                                                                shuffle=False)
                     f_euler = f_euler_python
                     trajectory_directory, checkpoint_directory = create_results_subdirectories(results_directory=results_directory, trajectory=True, residual=False)
 
@@ -1651,45 +1517,19 @@ if __name__ == '__main__':
                                         'residual_loss_test': np.inf,
                                         'time': 0.0}
 
-                    # CREATE REFERENCE SOLUTION
-                    z0 = np.array(args.ic)
-                    reference_ode_parameters = [args.kappa, args.mu, args.mass]
-                    t_train, z_ref_train, t_test, z_ref_test, z0_test = create_reference_solution(args.start, args.end, args.n_steps, z0, reference_ode_parameters, ode_integrator=f_euler_python)
-
-                    # Save the reference data for plotting during training
-                    plotting_reference_data = {'t_train': t_train,
-                                               't_test': t_test,
-                                               'z_ref_train': z_ref_train,
-                                               'z_ref_test': z_ref_test}
                     plotting_reference_data['results_directory'] = trajectory_directory
 
-                    # CONVERT THE REFERENCE DATA TO A DATASET
-                    ####################################################################################
-                    train_dataset = create_generic_dataset(torch.tensor(t_train), torch.tensor(z_ref_train))
-                    test_dataset = create_generic_dataset(torch.tensor(t_test), torch.tensor(z_ref_test))
-
-                    train_dataloader, test_dataloader = load_generic_dataloaders(train_dataset=train_dataset,
-                                                                                train_batch_size=args.batch_size,
-                                                                                test_dataset=test_dataset,
-                                                                                test_batch_size=args.batch_size,
-                                                                                shuffle=False)
-
                     if args.residual:
-                        try:
-                            ckpt = torch.load(parameter_file)
-                            hybrid_model.load_state_dict(ckpt['model_state_dict'])
-                            print('Continuing training with parameters of residual training')
-                        except:
-                            print('Could not find residual model to load')
+                        load_parameters(hybrid_model, parameter_file)
 
-                    else:
-                        if args.restore:
-                            try:
-                                ckpt = torch.load(restore_parameter_file)
-                                hybrid_model.load_state_dict(ckpt['model_state_dict'])
-                                print(f'Successfully restored parameters from {args.restore_name}')
-                            except:
-                                print('Could not find residual model to load')
+                    # else:
+                    #     if args.restore:
+                    #         try:
+                    #             ckpt = torch.load(restore_parameter_file)
+                    #             hybrid_model.load_state_dict(ckpt['model_state_dict'])
+                    #             print(f'Successfully restored parameters from {args.restore_name}')
+                    #         except:
+                    #             print('Could not find residual model to load')
 
                     # TRAINING
                     ####################################################################################
@@ -1702,7 +1542,7 @@ if __name__ == '__main__':
                                 train_dataloader=train_dataloader,
                                 test_dataloader=test_dataloader,
                                 device=device,
-                                use_multiprocessing=use_multiprocessing,
+                                use_multiprocessing=args.use_multiprocessing,
                                 processes=args.processes,
                                 epochs=args.epochs,
                                 particles=args.particles,
@@ -1749,17 +1589,4 @@ if __name__ == '__main__':
                         yaml.dump(yaml_dict, file)
 
                     if args.build_plot:
-                        build_plot(args.epochs, args.model, args.dataset, os.path.join(trajectory_directory, f'Loss.png'),
-                                *result)
-
-                        hybrid_model.t = t_train
-                        hybrid_model.z0 = z_ref_train[0]
-                        pred_train = torch.tensor(hybrid_model())
-
-                        hybrid_model.z0 = z_ref_test[0]
-                        hybrid_model.t = t_test
-                        pred_test = torch.tensor(hybrid_model())
-
-                        result_plot_multi_dim('Custom', 'VdP', os.path.join(trajectory_directory, f'Final.png'),
-                                    t_train, pred_train, t_test, pred_test,
-                                    np.hstack((t_train, t_test)), np.vstack((z_ref_train, z_ref_test)))
+                        plot_loss_and_prediction(result, hybrid_model, args, reference_ode_parameters, plotting_reference_data)
