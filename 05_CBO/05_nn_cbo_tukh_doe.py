@@ -16,6 +16,7 @@ import jax.numpy as jnp
 from jax.config import config
 config.update("jax_enable_x64", True)
 from functools import partial
+import orbax.checkpoint
 
 sys.path.insert(1, os.getcwd())
 # from plot_results import plot_results, plot_losses, get_file_path
@@ -790,6 +791,45 @@ def load_parameters(hybrid_model, parameter_file):
     except:
         print('Could not find model to load')
 
+def load_jax_parameters(hybrid_model, jax_parameters):
+    """We assume that the hybrid model and the jax model have the same structure
+
+    Parameters
+    ----------
+    hybrid_model : _type_
+        _description_
+    jax_parameters : _type_
+        _description_
+    """
+    jax_parameters_as_list = dict_to_list(jax_parameters)
+    jax_parameters_in_torch_format = []
+    for i, jax_param in enumerate(jax_parameters_as_list):
+        if len(jax_param.shape) == 2:
+            jax_param = jax_param.T
+        jax_param = torch.tensor(jax_param)
+        jax_parameters_in_torch_format.append(jax_param)
+    # In JAX/FLAX bias and kernel are swapped; swap them back
+    for i in range(0, len(jax_parameters_in_torch_format), 2):
+        jax_parameters_in_torch_format[i], jax_parameters_in_torch_format[i+1] = jax_parameters_in_torch_format[i+1], jax_parameters_in_torch_format[i]
+
+    for i, p in enumerate(hybrid_model.parameters()):
+        with torch.no_grad():
+            p.copy_(jax_parameters_in_torch_format[i])
+
+    return hybrid_model
+
+
+def dict_to_list(dict_, ret = None):
+    if ret is None:
+        ret = []
+    for k, v in dict_.items():
+        if type(v) == dict:
+            v = dict_to_list(v, ret)
+        else:
+            ret.append(v)
+    return ret
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
@@ -800,6 +840,8 @@ if __name__ == '__main__':
                         choices=list(MODELS.keys()))
     parser.add_argument('--dataset', type=str, default='VdP', help='dataset to use',
                         choices=list(DATASETS.keys()))
+    parser.add_argument('--problem_type', type=str, choices=['regression', 'classification'], default='regression',
+                        help='whether to use GPU (cuda) for accelerated computations or not')
 
     # TORCH AND MULTIPROCESSING OPTIONS
     parser.add_argument('--device', type=str, choices=['cuda', 'cpu'], default='cuda',
@@ -828,8 +870,8 @@ if __name__ == '__main__':
 
     # GENERAL ODE OPTIONS
     parser.add_argument('--start', type=float, default=0.0, help='Start value of the ODE integration')
-    parser.add_argument('--end', type=float, default=10.0, help='End value of the ODE integration')
-    parser.add_argument('--n_steps', type=float, default=6001, help='How many integration steps to perform')
+    parser.add_argument('--end', type=float, default=20.0, help='End value of the ODE integration')
+    parser.add_argument('--n_steps', type=float, default=60001, help='How many integration steps to perform')
     parser.add_argument('--ic', type=list, default=[1.0, 0.0], help='initial_condition of the ODE')
     parser.add_argument('--aug_state', type=bool, default=False, help='Whether or not to use the augemented state for the ODE dynamics')
     parser.add_argument('--aug_dim', type=int, default=4, help='Number of augment dimensions')
@@ -862,9 +904,9 @@ if __name__ == '__main__':
     parser.add_argument('--partial_update', type=bool, default=True, help='whether to use partial or full update')
     parser.add_argument('--cooling', type=bool, default=False, help='whether to apply cooling strategy')
 
-    parser.add_argument('--restore', required=False, type=bool, default=False,
+    parser.add_argument('--restore', required=False, type=bool, default=True,
                         help='restore previous parameters')
-    parser.add_argument('--restore_name', required=False, type=str, default='plot_test_75',
+    parser.add_argument('--restore_name', required=False, type=str, default='ckpt',
                         help='directory from which results will be restored')
     parser.add_argument('--overwrite', required=False, type=bool, default=True,
                         help='overwrite previous result')
@@ -1039,8 +1081,14 @@ if __name__ == '__main__':
                             layers = layers = [2] + [args.layer_size]*args.layers + [1]
                             augment_model = CustomMLP(layers)
                             hybrid_model = Hybrid_Python(reference_ode_parameters, augment_model, z0, t_train, mode='residual')
-                            # if args.restore:
-                            #     hybrid_model = restore_parameters(hybrid_model, restore_parameter_file)
+                            if args.restore:
+                                restore_directory = os.path.join(directory, args.restore_name)
+                                orbax_checkpointer = orbax.checkpoint.PyTreeCheckpointer()
+                                options = orbax.checkpoint.CheckpointManagerOptions(max_to_keep=5, create=True)
+                                checkpoint_manager = orbax.checkpoint.CheckpointManager(restore_directory, orbax_checkpointer, options)
+                                step = checkpoint_manager.latest_step()
+                                jax_parameters = checkpoint_manager.restore(step)
+                                hybrid_model = load_jax_parameters(hybrid_model, jax_parameters)
                             result = train(model=hybrid_model,
                                         train_dataloader=train_dataloader,
                                         test_dataloader=test_dataloader,
@@ -1146,7 +1194,6 @@ if __name__ == '__main__':
                                                                                 test_batch_size=args.batch_size if args.batch_size < len(test_dataset) else len(test_dataset),
                                                                                 shuffle=False)
 
-
                     if len(trajectory_doe_parameters) != 0:
                         # PREPARE DoE
                         doe_start_time = time.time()
@@ -1167,10 +1214,6 @@ if __name__ == '__main__':
                         for n_exp, experiment in enumerate(experiments):
                             experiment_start_time = time.time()
                             print(f'Trajectory Experiment {n_exp}/{len(experiments)} - {experiment}')
-
-                            # Write the experiment values into the args NameSpace
-                            for k, v in experiment.items():
-                                vars(args)[k] = v
 
                             # Write the experiment values into the args NameSpace
                             for k, v in experiment.items():
