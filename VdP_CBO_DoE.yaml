@@ -1,0 +1,10 @@
+fixed_arguments:
+  batch_size: 100
+  epochs: 10
+variable_arguments:
+  n_particles:
+  - 100
+  - 20
+  sigma:
+  - 0.1
+  - 0.4
