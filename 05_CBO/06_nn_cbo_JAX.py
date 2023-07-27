@@ -196,8 +196,8 @@ class Hybrid_Python():
         self.t = t
         self.nn_parameters = nn_parameters
         _, self.unravel_pytree = jax.flatten_util.ravel_pytree(nn_parameters)
-        self.ravel_pytree = jax.jit(jax.flatten_util.ravel_pytree)
-        self.unravel_pytree = jax.jit(self.unravel_pytree)
+        # self.ravel_pytree = jax.jit(jax.flatten_util.ravel_pytree)
+        # self.unravel_pytree = jax.jit(self.unravel_pytree)
         self.stim = False
         self.restore = restore
 
@@ -300,7 +300,6 @@ class Hybrid_Python():
 
     # @jit
     def set_parameters_flat(self, parameters):
-
         self.nn_parameters = self.unravel_pytree(parameters)
         # self.nn_parameters = self.unravel_pytree(parameters)
 
@@ -484,16 +483,13 @@ def train(model:Hybrid_FMU or Hybrid_Python,
             accuracies_test = accuracies_test + [np.inf]*(epochs-epoch-1)
             break
 
-        time_epoch = time.time() - start_epoch
-        time_optimizer_step_mean = np.mean(np.array(time_optimizer_steps))
-        time_train_evals_mean = np.mean(np.array(time_train_evals))
-        print(f'time for a full epoch: {time_epoch}')
-        print(f'number of sample batches: {n_batches}')
-        print(f'time for a optimizer step: {time_optimizer_step_mean}')
-        print(f'time for a evluation of the model: {time_train_evals_mean}')
-
-
-
+        # time_epoch = time.time() - start_epoch
+        # time_optimizer_step_mean = np.mean(np.array(time_optimizer_steps))
+        # time_train_evals_mean = np.mean(np.array(time_train_evals))
+        # print(f'time for a full epoch: {time_epoch}')
+        # print(f'number of sample batches: {n_batches}')
+        # print(f'time for a optimizer step: {time_optimizer_step_mean}')
+        # print(f'time for a evluation of the model: {time_train_evals_mean}')
     return accuracies_train, accuracies_test, losses_train, losses_test, best_epoch, best_parameters
 
 def f_euler_fmu(z0, t, fmu_evaluator: FMUEvaluator, model, model_parameters, pointers):
@@ -833,8 +829,8 @@ if __name__ == '__main__':
 
     # GENERAL ODE OPTIONS
     parser.add_argument('--start', type=float, default=0.0, help='Start value of the ODE integration')
-    parser.add_argument('--end', type=float, default=10.0, help='End value of the ODE integration')
-    parser.add_argument('--n_steps', type=float, default=2001, help='How many integration steps to perform')
+    parser.add_argument('--end', type=float, default=20.0, help='End value of the ODE integration')
+    parser.add_argument('--n_steps', type=float, default=10001, help='How many integration steps to perform')
     parser.add_argument('--ic', type=list, default=[1.0, 0.0], help='initial_condition of the ODE')
     parser.add_argument('--aug_state', type=bool, default=False, help='Whether or not to use the augemented state for the ODE dynamics')
     parser.add_argument('--aug_dim', type=int, default=4, help='Number of augment dimensions')
@@ -848,8 +844,8 @@ if __name__ == '__main__':
     # parser.add_argument('--simple_problem', type=bool, default=False, help='Whether or not to use a simple damped oscillator instead of VdP')
 
     # NEURAL NETWORK OPTIONS
-    parser.add_argument('--layers', type=int, default=2, help='Number of hidden layers')
-    parser.add_argument('--layer_size', type=int, default=40, help='Number of neurons in a hidden layer')
+    parser.add_argument('--layers', type=int, default=1, help='Number of hidden layers')
+    parser.add_argument('--layer_size', type=int, default=25, help='Number of neurons in a hidden layer')
 
     # GENERAL OPTIMIZER OPTIONS
     # CBO OPTIONS
@@ -867,9 +863,9 @@ if __name__ == '__main__':
     parser.add_argument('--partial_update', type=bool, default=False, help='whether to use partial or full update')
     parser.add_argument('--cooling', type=bool, default=False, help='whether to apply cooling strategy')
 
-    parser.add_argument('--restore', required=False, type=bool, default=False,
+    parser.add_argument('--restore', required=False, type=bool, default=True,
                         help='restore previous parameters')
-    parser.add_argument('--restore_name', required=False, type=str, default='plot_test_75',
+    parser.add_argument('--restore_name', required=False, type=str, default='ckpt',
                         help='directory from which results will be restored')
     parser.add_argument('--overwrite', required=False, type=bool, default=True,
                         help='overwrite previous result')
@@ -967,18 +963,23 @@ if __name__ == '__main__':
                            'plotting_reference_data': plotting_reference_data}
         if args.restore:
             restore_directory = os.path.join(directory, args.restore_name)
-            if not os.path.exists(restore_directory):
-                print('Restore path does not exist')
-                exit(1)
-            restore_results_file_path = os.path.join(restore_directory, results_name)
-            restore_setup_file = os.path.join(restore_directory, setup_file_name)
+            orbax_checkpointer = orbax.checkpoint.PyTreeCheckpointer()
+            options = orbax.checkpoint.CheckpointManagerOptions(max_to_keep=5, create=True)
+            checkpoint_manager = orbax.checkpoint.CheckpointManager(restore_directory, orbax_checkpointer, options)
+            step = checkpoint_manager.latest_step()
+            nn_parameters = checkpoint_manager.restore(step)
+            # if not os.path.exists(restore_directory):
+            #     print('Restore path does not exist')
+            #     exit(1)
+            # restore_results_file_path = os.path.join(restore_directory, results_name)
+            # restore_setup_file = os.path.join(restore_directory, setup_file_name)
 
-            # Try to restore a previous experiment run
-            with open(restore_setup_file, 'r') as file:
-                restore_best_experiment = yaml.safe_load(file)
+            # # Try to restore a previous experiment run
+            # with open(restore_setup_file, 'r') as file:
+            #     restore_best_experiment = yaml.safe_load(file)
 
-            for k,v in restore_best_experiment.items():
-                vars(args)[k] = v
+            # for k,v in restore_best_experiment.items():
+            #     vars(args)[k] = v
 
         if args.doe:
             print('Performing Design of Experiment (DoE)')
@@ -993,8 +994,8 @@ if __name__ == '__main__':
                                                        'dt': [0.1, 0.01],
                                                        'particles':[200],
                                                        'cooling': [False],
-                                                       'layer_size': [40],
-                                                       'layers': [2]})
+                                                       'layer_size': [25],
+                                                       'layers': [1]})
                 print(f'Residual DoE Parameters: {residual_doe_parameters}')
 
             if args.trajectory:
@@ -1008,8 +1009,8 @@ if __name__ == '__main__':
                                                             'particles':[10, 100],
                                                             'batch_size': [100, 200],
                                                             'cooling': [True, False],
-                                                            'layer_size': [20, 40],
-                                                            'n_layers': [1, 2, 3]})
+                                                            'layer_size': [25],
+                                                            'n_layers': [1]})
                 print(f'Trajectory DoE Parameters: {trajectory_doe_parameters}')
 
             experiment_losses = []
@@ -1023,19 +1024,19 @@ if __name__ == '__main__':
                                'model': None,
                                'time': 0.0}
 
-            if args.restore:
-                # If we restore the best setup of a previous DoE run the we omit all the
-                # parameters checked in the previous run
-                print('Restoring Parameters from previous DoE run. Removing already checked parameters...')
-                for k,v in restore_best_experiment['setup'].items():
-                    try:
-                        residual_doe_parameters[k] = v
-                    except:
-                        pass
-                    try:
-                        trajectory_doe_parameters[k] = v
-                    except:
-                        pass
+            # if args.restore:
+            #     # If we restore the best setup of a previous DoE run the we omit all the
+            #     # parameters checked in the previous run
+            #     print('Restoring Parameters from previous DoE run. Removing already checked parameters...')
+            #     for k,v in restore_best_experiment['setup'].items():
+            #         try:
+            #             residual_doe_parameters[k] = v
+            #         except:
+            #             pass
+            #         try:
+            #             trajectory_doe_parameters[k] = v
+            #         except:
+            #             pass
 
             if args.fmu:
                 print('DoE for FMU not yet implemented')
@@ -1060,8 +1061,12 @@ if __name__ == '__main__':
                             for k, v in experiment.items():
                                 experiment_args[k] = v
 
-                            layers = layers = [2] + [args.layer_size]*args.layers + [1]
+                            layers = layers = [args.layer_size]*args.layers + [1]
                             hybrid_model = create_hybrid_model(z0, t_train, reference_ode_parameters, args.model, layers, mode='residual')
+
+                            if args.restore:
+                                hybrid_model.nn_parameters = nn_parameters
+
                             experiment_args['plotting_reference_data'] = plotting_reference_data
 
                             start = time.time()
