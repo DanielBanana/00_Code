@@ -333,7 +333,7 @@ class ExplicitMLP(nn.Module):
         for i, lyr in enumerate(self.layers):
             x = lyr(x)
             if i != len(self.layers) - 1:
-                x = nn.silu(x)
+                x = nn.relu(x)
         return x
 
 def create_nn(layers, z0):
@@ -519,41 +519,41 @@ if __name__ == '__main__':
     parser.add_argument('--mu', type=float, default=8.53, help='damping value of the VdP damping term')
     parser.add_argument('--start', type=float, default=0.0, help='Start value of the ODE integration')
     parser.add_argument('--end', type=float, default=20.0, help='End value of the ODE integration')
-    parser.add_argument('--nsteps', type=float, default=10001, help='How many integration steps to perform')
+    parser.add_argument('--nsteps', type=float, default=60001, help='How many integration steps to perform')
 
-    parser.add_argument('--layers', type=int, default=3, help='Number of hidden layers')
+    parser.add_argument('--layers', type=int, default=1, help='Number of hidden layers')
     parser.add_argument('--layer_size', type=int, default=25, help='Number of neurons in a hidden layer')
     parser.add_argument('--lambda_', type=int, default=0, help='lambda in the L2 regularisation term')
 
     parser.add_argument('--aug_state', type=bool, default=False, help='Whether or not to use the augemented state for the ODE dynamics')
     parser.add_argument('--aug_dim', type=int, default=4, help='Number of augment dimensions')
     parser.add_argument('--random_shift', type=bool, default=False, help='Whether or not to shift the gradient of training stagnates')
-    parser.add_argument('--batching', type=bool, default=False, help='whether or not to batch the training data')
-    parser.add_argument('--n_batches', type=int, default=40, help='How many (arbitrary) batches to create')
-    parser.add_argument('--batch_size', type=int, default=200, help='batch size (for samples-level batching)')
-    parser.add_argument('--clean_batching', type=bool, default=False, help='Whether or not to split training data into with no overlap')
-    parser.add_argument('--clean_n_batches', type=int, default=5, help='How many clean batches to create')
+    parser.add_argument('--batching', type=bool, default=True, help='whether or not to batch the training data')
+    parser.add_argument('--n_batches', type=int, default=200, help='How many (arbitrary) batches to create')
+    parser.add_argument('--batch_size', type=int, default=50, help='batch size (for samples-level batching)')
+    parser.add_argument('--clean_batching', type=bool, default=True, help='Whether or not to split training data into with no overlap')
+    parser.add_argument('--clean_n_batches', type=int, default=200, help='How many clean batches to create')
 
     parser.add_argument('--stimulate', type=bool, default=False, help='Whether or not to use the stimulated dynamics')
     parser.add_argument('--simple_problem', type=bool, default=False, help='Whether or not to use a simple damped oscillator instead of VdP')
 
     parser.add_argument('--method', type=str, default='BFGS', help='Which optimisation method to use')
-    parser.add_argument('--tol', type=float, default=1e-8, help='Tolerance for the optimisation method')
-    parser.add_argument('--opt_steps', type=float, default=1000, help='Max Number of steps for the Training')
+    parser.add_argument('--tol', type=float, default=1e-4, help='Tolerance for the optimisation method')
+    parser.add_argument('--opt_steps', type=float, default=100, help='Max Number of steps for the Training')
 
-    parser.add_argument('--transfer_learning', type=bool, default=True, help='Tolerance for the optimisation method')
+    parser.add_argument('--transfer_learning', type=bool, default=True, help='Whether or not to use residual transfer learning')
     parser.add_argument('--res_steps', type=float, default=500, help='Number of steps for the Pretraining on the Residuals')
 
     parser.add_argument('--build_plot', required=False, default=True, action='store_true',
                         help='specify to build loss and accuracy plot')
-    parser.add_argument('--results_name', required=False, type=str, default='demo',
+    parser.add_argument('--results_name', required=False, type=str, default='500_res_steps',
                         help='name under which the results should be saved, like plots and such')
     parser.add_argument('--checkpoint_interval', required=False, type=int, default=100,
                         help='path to save the resulting plot')
     parser.add_argument('--restore', required=False, type=bool, default=False,
                         help='restore previous parameters')
 
-    parser.add_argument('--eval_freq', type=int, default=100, help='evaluate test accuracy every EVAL_FREQ '
+    parser.add_argument('--eval_freq', type=int, default=25, help='evaluate test accuracy every EVAL_FREQ '
                                                                    'samples-level batches')
     args = parser.parse_args()
 
@@ -562,17 +562,22 @@ if __name__ == '__main__':
     file_path = get_file_path(path)
     # results_path = file_path + f'_{args.results_name}'
 
-    result_directory = os.path.join(directory, 'result')
+    result_directory = os.path.join(directory, args.results_name)
     if not os.path.exists(result_directory):
         os.mkdir(result_directory)
     result_path = os.path.join(result_directory, args.results_name)
 
-    residual_directory = os.path.join(directory, 'residual')
+    trajectory_directory = os.path.join(result_directory, 'trajectory')
+    if not os.path.exists(trajectory_directory):
+        os.mkdir(trajectory_directory)
+    trajectory_path = os.path.join(trajectory_directory, args.results_name)
+
+    residual_directory = os.path.join(result_directory, 'residual')
     if not os.path.exists(residual_directory):
         os.mkdir(residual_directory)
     residual_path = os.path.join(residual_directory, args.results_name)
 
-    checkpoint_directory = os.path.join(directory, 'ckpt')
+    checkpoint_directory = os.path.join(result_directory, 'ckpt')
     if not os.path.exists(checkpoint_directory):
         os.mkdir(checkpoint_directory)
 
@@ -659,11 +664,10 @@ if __name__ == '__main__':
         path = os.path.abspath(__file__)
         plot_path = get_file_path(path)
         plot_results(t_ref, z, z_ref, residual_path+'_best')
-        optimizer_args['epoch'] = 0
 
     # Train on Trajectory
     ####################################################################################
-    optimizer_args['results_path'] = result_path
+    optimizer_args['results_path'] = trajectory_path
     try:
         res = minimize(function_wrapper, flat_nn_parameters, method='BFGS', jac=True, args=optimizer_args, tol=args.tol)
         print(res)
@@ -676,5 +680,5 @@ if __name__ == '__main__':
     z_training = hybrid_euler(z0, t_ref, reference_ode_parameters, nn_parameters)
     z_validation = hybrid_euler(z0_val, t_val, reference_ode_parameters, nn_parameters)
 
-    plot_results(t_ref, z_training, z_ref, result_path+'_best')
-    plot_results(t_val, z_validation, z_val, result_path+'_best_val')
+    plot_results(t_ref, z_training, z_ref, trajectory_path+'_best')
+    plot_results(t_val, z_validation, z_val, trajectory_path+'_best_val')
