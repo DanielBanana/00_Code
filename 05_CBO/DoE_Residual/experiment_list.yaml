@@ -1,0 +1,48 @@
+Experiment 0:
+  batch_size: 100
+  dt: 0.1
+  epochs: 50
+  particles: 100
+  sigma: 0.317
+Experiment 1:
+  batch_size: 100
+  dt: 0.01
+  epochs: 50
+  particles: 100
+  sigma: 0.317
+Experiment 2:
+  batch_size: 100
+  dt: 0.1
+  epochs: 50
+  particles: 200
+  sigma: 0.317
+Experiment 3:
+  batch_size: 100
+  dt: 0.01
+  epochs: 50
+  particles: 200
+  sigma: 0.317
+Experiment 4:
+  batch_size: 100
+  dt: 0.1
+  epochs: 50
+  particles: 100
+  sigma: 0.63
+Experiment 5:
+  batch_size: 100
+  dt: 0.01
+  epochs: 50
+  particles: 100
+  sigma: 0.63
+Experiment 6:
+  batch_size: 100
+  dt: 0.1
+  epochs: 50
+  particles: 200
+  sigma: 0.63
+Experiment 7:
+  batch_size: 100
+  dt: 0.01
+  epochs: 50
+  particles: 200
+  sigma: 0.63
