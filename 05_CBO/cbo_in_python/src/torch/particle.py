@@ -7,16 +7,25 @@ from copy import deepcopy
 
 
 class Particle(nn.Module):
-    def __init__(self, model):
+    def __init__(self, model, restore=True):
         """
         Represents a particles in the consensus-based optimization. Stores a copy of the optimized model.
         :param model: the underlying model.
         """
         super(Particle, self).__init__()
         self.model = deepcopy(model)
-        for p in self.model.parameters():
-            with torch.no_grad():
-                p.copy_(torch.randn_like(p))
+        # for p in self.model.parameters():
+        #     with torch.no_grad():
+        #         p.copy_(torch.randn_like(p))
+
+        if restore:
+            for p in self.model.parameters():
+                with torch.no_grad():
+                    p.copy_(p + 0.01*torch.randn_like(p))
+        else:
+            for p in self.model.parameters():
+                with torch.no_grad():
+                    p.copy_(torch.randn_like(p))
 
     def forward(self, X):
         return self.model(X)
