@@ -3,6 +3,7 @@ import sys
 import yaml
 import numpy as np
 import os
+import logging
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -14,6 +15,11 @@ if __name__ == '__main__':
     parser.add_argument('--results_directory', type=str)
     args = parser.parse_args()
 
+    log_file = os.path.join(args.results_directory, 'CBO.log')
+    logging.basicConfig(filename=log_file, encoding='utf-8', level=logging.DEBUG)
+    logger = logging.getLogger('CBO')
+
+    logger.info('Generating random number')
     rnd = np.random.normal()
 
 
@@ -24,6 +30,7 @@ if __name__ == '__main__':
     string = 'string'
     list_w_string = [10, 20, 'str', 10]
 
+    logger.info('Saving results')
     results_dict = {
         'loss_history': loss_history,
         'time': time,
@@ -31,7 +38,8 @@ if __name__ == '__main__':
         # 'list_w_string': list_w_string
     }
 
-    with open(os.path.join(args.results_directory, args.results_file), 'w') as file:
+    logger.info('Dumping Results, log')
+    with open(args.results_file, 'w') as file:
         yaml.dump(results_dict, file)
 
     exit(0)

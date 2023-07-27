@@ -6,5 +6,5 @@ variable_arguments:
   - 100
   - 20
   sigma:
-  - 0.1
-  - 0.4
+  - 0.317
+  - 0.63
