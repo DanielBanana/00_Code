@@ -21,7 +21,9 @@ def cbo_update(V, V_alpha, anisotropic, l, sigma, dt, device):
     randinit = lambda x: jrandom.normal(key, x.shape)
     noise = jax.tree_util.tree_map(randinit, V[0])
 
-    noise = [jax.tree_util.tree_map(lambda V_: [jrandom.normal(jrandom.split(jrandom.PRNGKey(np.random.randint(0, 100)))[0], v.shape) for v in V_] , V_) for V_ in V]
+
+
+    noise = np.array([jax.tree_util.tree_map(lambda V_: [jrandom.normal(jrandom.split(jrandom.PRNGKey(np.random.randint(0, 100)))[0], v.shape) for v in V_] , V_) for V_ in V], dtype=object)
     # noise = jrandom.normal(key, V.shape)
     # with torch.no_grad():
     diff = V - V_alpha
