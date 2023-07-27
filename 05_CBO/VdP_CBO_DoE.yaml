@@ -1,0 +1,35 @@
+fixed_arguments:
+  start: 0.0
+  end: 20.0
+  n_steps: 60001
+  ic:
+    - 0.0
+    - 1.0
+  kappa: 1.0
+  mu: 8.53
+  mass: 1.0
+  layers: 1
+  layer_size: 25
+  residual: True
+  trajectory: False
+  epochs: 100
+  batch_size: 50
+  particles_batch_size: 20
+  alpha: 100.0
+  l: 1.0
+  anisotropic: True
+  eps: 0.00001
+  partial_update: True
+  cooling: False
+  eval_freq: 10
+variable_arguments:
+  dt:
+  - 0.1
+  - 0.01
+  particles:
+  - 100
+  - 1000
+  sigma:
+  - 0.3162
+  - 0.6324
+  - 1.0
