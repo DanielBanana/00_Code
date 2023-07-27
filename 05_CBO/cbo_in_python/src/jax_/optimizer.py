@@ -190,8 +190,8 @@ class Optimizer:
                 self.V_alpha_old = self.V_alpha.copy() if self.V_alpha is not None else None
 
                 start = time.time()
-                V_batch = [self.V[i].model.nn_parameters for i in particles_batch]
-                self.V_alpha = compute_v_alpha(energy_values, V_batch, self.alpha, self.device)
+                # V_batch = [self.V[i].model.nn_parameters for i in particles_batch]
+                self.V_alpha = compute_v_alpha(energy_values, self.V[particles_batch], self.alpha, self.device)
                 time_compute_v_alpha.append(time.time()-start)
 
                 start = time.time()
@@ -265,8 +265,11 @@ class Optimizer:
         if self.V_alpha_old is not None:
             # norm = torch.norm(self.V_alpha.view(-1) - self.V_alpha_old.view(-1), p=float('inf'),
             #                   dim=0).detach().cpu().numpy()
-            norm = jnp.linalg.norm(self.V_alpha - self.V_alpha_old, ord=np.inf,
-                                   axis=0)
+            norm = []
+            for i in range(self.V_alpha.shape[0]):
+                norm.append(jnp.linalg.norm(self.V_alpha[i] - self.V_alpha_old[i], ord=np.inf))
+            norm = jnp.linalg.norm(jnp.array(norm), ord=np.inf, axis=0)
+
             if jnp.less(norm, self.eps):
                 self.V += self.sigma * (self.dt ** 0.5) * randn(self.V.shape, self.device)
 
