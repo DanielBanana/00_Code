@@ -351,7 +351,31 @@ def train(model:Hybrid_FMU or Hybrid_Python,
         # loss_fn = Loss(F.mse_loss, augment_optimizer)
         loss_fn = Loss(F.mse_loss, optimizer)
 
-    n_batches = len(train_dataloader)
+    # CALCULATE THE LOSS OVER THE WHOLE TRAJECTORY, NO BATCHES
+    t_train = plotting_reference_data['t_train']
+    t_test = plotting_reference_data['t_test']
+    z_ref_train = plotting_reference_data['z_ref_train']
+    z_ref_test = plotting_reference_data['z_ref_test']
+    results_directory = plotting_reference_data['results_directory']
+
+    model.trajectory_mode()
+    model.set_trajectory_variables(z0=z_ref_train[0], t=t_train)
+    if isinstance(model, Hybrid_FMU):
+        pred_train = torch.tensor(model(pointers))
+    else:
+        pred_train = model()
+    model.set_trajectory_variables(z0=z_ref_test[0], t=t_test)
+    if isinstance(model, Hybrid_FMU):
+        pred_test = torch.tensor(model(pointers))
+    else:
+        pred_test = model()
+
+    if residual:
+        model.residual_mode()
+
+    result_plot_multi_dim('Custom', 'VdP', os.path.join(results_directory, f'Initial.png'),
+                t_train, pred_train, t_test, pred_test,
+                np.hstack((t_train, t_test)), np.vstack((z_ref_train, z_ref_test)))
 
     for epoch in range(epochs):
         accuracies_epoch_train = []
@@ -404,7 +428,7 @@ def train(model:Hybrid_FMU or Hybrid_Python,
             else:
                 pred_train_whole_trajectory = model(train_dataloader.dataset.x)
         else:
-            model.t = train_dataloader.dataset.x
+            model.t = train_dataloader.dataset.x.detach().numpy()
             model.z0 = train_dataloader.dataset.y[0]
             if isinstance(model, Hybrid_FMU):
                 pred_train_whole_trajectory = torch.tensor(model(pointers))
@@ -459,7 +483,7 @@ def train(model:Hybrid_FMU or Hybrid_Python,
                 else:
                     pred_test_whole_trajectory = model(test_dataloader.dataset.x)
             else:
-                model.t = test_dataloader.dataset.x
+                model.t = test_dataloader.dataset.x.detach().numpy()
                 model.z0 = test_dataloader.dataset.y[0]
                 if isinstance(model, Hybrid_FMU):
                     pred_test_whole_trajectory = torch.tensor(model(pointers))
@@ -479,7 +503,7 @@ def train(model:Hybrid_FMU or Hybrid_Python,
         if losses_test[-1] < best_loss:
             best_loss = losses_test[-1]
             torch.save({'epoch': epoch,
-                        'model_state_dict': hybrid_model.state_dict(),
+                        'model_state_dict': model.state_dict(),
                         'loss': losses_train[-1],
                         'loss_test': losses_test[-1],
             }, os.path.join(plotting_reference_data['results_directory'], 'best_params.pt'))
@@ -818,7 +842,6 @@ def load_jax_parameters(hybrid_model, jax_parameters):
 
     return hybrid_model
 
-
 def dict_to_list(dict_, ret = None):
     if ret is None:
         ret = []
@@ -832,7 +855,6 @@ def dict_to_list(dict_, ret = None):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-
     parser.add_argument('--optimisation_method', type=str, default='CBO', help=f'Which type of optimisation method to use: CBO or Adjoint')
 
     # OLD OPTIONS
@@ -856,9 +878,9 @@ if __name__ == '__main__':
     parser.add_argument('--doe', type=bool, default=True, help='Whether or not to use the FMU or a python implementation')
     parser.add_argument('--residual', required=False, type=bool, default=True,
                         help='Perform Design of Experiments with NN Parameters and ODE Hyperparameters on Residuals')
-    parser.add_argument('--trajectory', required=False, type=bool, default=True,
+    parser.add_argument('--trajectory', required=False, type=bool, default=False,
                         help='Perform Design of Experiments with NN Parameters and ODE Hyperparameters on Trajectory')
-    parser.add_argument('--results_directory_name', required=False, type=str, default='CBO_VdP_KONSTANTIN',
+    parser.add_argument('--results_directory_name', required=False, type=str, default='CBO_VdP_DoE',
                         help='name under which the results should be saved, like plots and such')
     parser.add_argument('--build_plot', required=False, default=True, action='store_true',
                         help='specify to build loss and accuracy plot')
@@ -871,7 +893,7 @@ if __name__ == '__main__':
     # GENERAL ODE OPTIONS
     parser.add_argument('--start', type=float, default=0.0, help='Start value of the ODE integration')
     parser.add_argument('--end', type=float, default=20.0, help='End value of the ODE integration')
-    parser.add_argument('--n_steps', type=float, default=60001, help='How many integration steps to perform')
+    parser.add_argument('--n_steps', type=float, default=100001, help='How many integration steps to perform')
     parser.add_argument('--ic', type=list, default=[1.0, 0.0], help='initial_condition of the ODE')
     parser.add_argument('--aug_state', type=bool, default=False, help='Whether or not to use the augemented state for the ODE dynamics')
     parser.add_argument('--aug_dim', type=int, default=4, help='Number of augment dimensions')
@@ -890,13 +912,13 @@ if __name__ == '__main__':
 
     # GENERAL OPTIMIZER OPTIONS
     # CBO OPTIONS
-    parser.add_argument('--epochs', type=int, default=3, help='train for EPOCHS epochs')
+    parser.add_argument('--epochs', type=int, default=50, help='train for EPOCHS epochs')
     parser.add_argument('--batch_size', type=int, default=60, help='batch size (for samples-level batching)')
-    parser.add_argument('--particles', type=int, default=75, help='')
-    parser.add_argument('--particles_batch_size', type=int, default=10, help='batch size '
+    parser.add_argument('--particles', type=int, default=500, help='')
+    parser.add_argument('--particles_batch_size', type=int, default=20, help='batch size '
                                                                              '(for particles-level batching)')
     parser.add_argument('--alpha', type=float, default=50.0, help='alpha from CBO dynamics')
-    parser.add_argument('--sigma', type=float, default=0.4 ** 0.5, help='sigma from CBO dynamics')
+    parser.add_argument('--sigma', type=float, default=1.0 ** 0.5, help='sigma from CBO dynamics')
     parser.add_argument('--l', type=float, default=1.0, help='lambda from CBO dynamics')
     parser.add_argument('--dt', type=float, default=0.1, help='dt from CBO dynamics')
     parser.add_argument('--anisotropic', type=bool, default=True, help='whether to use anisotropic or not')
@@ -904,12 +926,15 @@ if __name__ == '__main__':
     parser.add_argument('--partial_update', type=bool, default=True, help='whether to use partial or full update')
     parser.add_argument('--cooling', type=bool, default=False, help='whether to apply cooling strategy')
 
-    parser.add_argument('--restore', required=False, type=bool, default=True,
+    parser.add_argument('--restore', required=False, type=bool, default=False,
                         help='restore previous parameters')
-    parser.add_argument('--restore_name', required=False, type=str, default='ckpt',
+    parser.add_argument('--restore_name', required=False, type=str, default='500_res_steps/ckpt',
                         help='directory from which results will be restored')
     parser.add_argument('--overwrite', required=False, type=bool, default=True,
                         help='overwrite previous result')
+    parser.add_argument('--n_runs', type=int, default=3,
+                        help='DoE Parameter; how often each configuration should be run to compute an average')
+
     args = parser.parse_args()
 
     if args.batch_size == -1:
@@ -920,7 +945,7 @@ if __name__ == '__main__':
 
     path = os.path.abspath(__file__)
     directory = os.path.sep.join(path.split(os.path.sep)[:-1])
-    file_path = get_file_path(path)
+    # file_path = get_file_path(path)
     results_directory = create_results_directory(directory=directory, results_directory_name=args.results_directory_name)
     with open(os.path.join(results_directory, 'Arguments'), 'a') as file:
         file.write(str(args))
@@ -1058,84 +1083,119 @@ if __name__ == '__main__':
                         exp_dicts = []
                         best_experiment = 0
 
-                        # EXECUTE DoE
-                        for n_exp, experiment in enumerate(experiments):
-                            experiment_start_time = time.time()
-                            print(f'Residual Experiment {n_exp+1}/{len(experiments)} - {experiment}')
+                        experiment_results = {}
 
-                            # Write the experiment values into the args NameSpace
-                            for k, v in experiment.items():
-                                vars(args)[k] = v
+                        for averaging_run in range(1, args.n_runs+1):
 
-                            experiment_directory = create_experiment_directory(results_directory, n_exp)
-                            residual_directory, checkpoint_directory = create_results_subdirectories(results_directory=experiment_directory, trajectory=False, residual=True)
-                            plotting_reference_data['results_directory'] = residual_directory
+                            # EXECUTE DoE
+                            for n_exp, experiment in enumerate(experiments):
+                                experiment_start_time = time.time()
+                                print(f'Residual Experiment {n_exp+1}/{len(experiments)} - {experiment}')
 
-                            # if args.restore:
-                            #     restored_parameters = restore_best_experiment['setup']
-                            #     experiment_strings.append(f'Residual Experiment {n_exp+1}/{len(experiments)} - {experiment} (restored parameters: {restored_parameters}')
-                            # else:
+                                # Write the experiment values into the args NameSpace
+                                for k, v in experiment.items():
+                                    vars(args)[k] = v
 
-                            # TRAINING
-                            ####################################################################################
-                            layers = layers = [2] + [args.layer_size]*args.layers + [1]
-                            augment_model = CustomMLP(layers)
-                            hybrid_model = Hybrid_Python(reference_ode_parameters, augment_model, z0, t_train, mode='residual')
-                            if args.restore:
-                                restore_directory = os.path.join(directory, args.restore_name)
-                                orbax_checkpointer = orbax.checkpoint.PyTreeCheckpointer()
-                                options = orbax.checkpoint.CheckpointManagerOptions(max_to_keep=5, create=True)
-                                checkpoint_manager = orbax.checkpoint.CheckpointManager(restore_directory, orbax_checkpointer, options)
-                                step = checkpoint_manager.latest_step()
-                                jax_parameters = checkpoint_manager.restore(step)
-                                hybrid_model = load_jax_parameters(hybrid_model, jax_parameters)
-                            result = train(model=hybrid_model,
-                                        train_dataloader=train_dataloader,
-                                        test_dataloader=test_dataloader,
-                                        device=device,
-                                        use_multiprocessing=args.use_multiprocessing,
-                                        processes=args.processes,
-                                        epochs=args.epochs,
-                                        particles=args.particles,
-                                        particles_batch_size=args.particles_batch_size,
-                                        alpha=args.alpha,
-                                        sigma=args.sigma,
-                                        l=args.l,
-                                        dt=args.dt,
-                                        anisotropic=args.anisotropic,
-                                        eps=args.eps,
-                                        partial_update=args.partial_update,
-                                        cooling=args.cooling,
-                                        eval_freq=args.eval_freq,
-                                        problem_type='regression',
-                                        pointers=None,
-                                        residual=True,
-                                        plotting_reference_data=plotting_reference_data)
-                            experiment_time = time.time() - experiment_start_time
+                                experiment_directory = create_experiment_directory(results_directory, n_exp)
+                                residual_directory, checkpoint_directory = create_results_subdirectories(results_directory=experiment_directory, trajectory=False, residual=True)
+                                plotting_reference_data['results_directory'] = residual_directory
 
-                            hybrid_model, ckpt = get_best_parameters(hybrid_model, residual_directory)
+                                # if args.restore:
+                                #     restored_parameters = restore_best_experiment['setup']
+                                #     experiment_strings.append(f'Residual Experiment {n_exp+1}/{len(experiments)} - {experiment} (restored parameters: {restored_parameters}')
+                                # else:
 
-                            exp_dict = {'n_exp': n_exp,
-                                        'setup': experiment,
-                                        'loss': ckpt['loss'],
-                                        'loss_test': ckpt['loss_test'],
-                                        'model': hybrid_model,
-                                        'time': experiment_time}
-                            exp_dicts.append(exp_dict)
+                                # TRAINING
+                                ####################################################################################
+                                layers = layers = [2] + [args.layer_size]*args.layers + [1]
+                                augment_model = CustomMLP(layers)
+                                hybrid_model = Hybrid_Python(reference_ode_parameters, augment_model, z0, t_train, mode='residual')
+                                if args.restore:
+                                    restore_directory = os.path.join(directory, args.restore_name)
+                                    orbax_checkpointer = orbax.checkpoint.PyTreeCheckpointer()
+                                    options = orbax.checkpoint.CheckpointManagerOptions(max_to_keep=5, create=True)
+                                    checkpoint_manager = orbax.checkpoint.CheckpointManager(restore_directory, orbax_checkpointer, options)
+                                    step = checkpoint_manager.latest_step()
+                                    jax_parameters = checkpoint_manager.restore(step)
+                                    hybrid_model = load_jax_parameters(hybrid_model, jax_parameters)
 
-                            print(f'Best Epoch ({ckpt["epoch"]}/{args.epochs})- Training loss: {exp_dict["loss"]:3.5f}, Validation loss: {exp_dict["loss_test"]:3.5f}, Time: {experiment_time:3.3f}')
-                            with open(results_file, 'a') as file:
-                                file.writelines(f'Best Result - Training loss: {exp_dict["loss"]:3.5f}, Validation loss: {exp_dict["loss_test"]:3.5f}, Time: {experiment_time:3.3f}')
-                                file.write('\n')
 
-                            if exp_dict['loss_test'] <= exp_dicts[best_experiment]['loss_test']:
-                                best_experiment = n_exp
-                                save_best_experiment(exp_dict, hybrid_model, args, parameter_file)
+                                result = train(model=hybrid_model,
+                                            train_dataloader=train_dataloader,
+                                            test_dataloader=test_dataloader,
+                                            device=device,
+                                            use_multiprocessing=args.use_multiprocessing,
+                                            processes=args.processes,
+                                            epochs=args.epochs,
+                                            particles=args.particles,
+                                            particles_batch_size=args.particles_batch_size,
+                                            alpha=args.alpha,
+                                            sigma=args.sigma,
+                                            l=args.l,
+                                            dt=args.dt,
+                                            anisotropic=args.anisotropic,
+                                            eps=args.eps,
+                                            partial_update=args.partial_update,
+                                            cooling=args.cooling,
+                                            eval_freq=args.eval_freq,
+                                            problem_type='regression',
+                                            pointers=None,
+                                            residual=True,
+                                            plotting_reference_data=plotting_reference_data,
+                                            restore=args.restore)
+                                experiment_time = time.time() - experiment_start_time
+                                accuracies_train, accuracies_test, losses_train, losses_test = result
 
-                            if args.build_plot:
-                                plot_loss_and_prediction(result, hybrid_model, args, reference_ode_parameters, plotting_reference_data)
+                                hybrid_model, ckpt = get_best_parameters(hybrid_model, residual_directory)
 
-                        dump_best_experiment(exp_dicts[best_experiment], setup_file, results_file)
+                                exp_dict = {'n_exp': n_exp,
+                                            'setup': experiment,
+                                            'loss': ckpt['loss'],
+                                            'loss_test': ckpt['loss_test'],
+                                            'model': hybrid_model,
+                                            'time': experiment_time}
+                                exp_dicts.append(exp_dict)
+
+                                print(f'Best Epoch ({ckpt["epoch"]}/{args.epochs})- Training loss: {exp_dict["loss"]:3.5f}, Validation loss: {exp_dict["loss_test"]:3.5f}, Time: {experiment_time:3.3f}')
+                                with open(results_file, 'a') as file:
+                                    file.writelines(f'Best Result - Training loss: {exp_dict["loss"]:3.5f}, Validation loss: {exp_dict["loss_test"]:3.5f}, Time: {experiment_time:3.3f}')
+                                    file.write('\n')
+
+                                if exp_dict['loss_test'] <= exp_dicts[best_experiment]['loss_test']:
+                                    best_experiment = n_exp
+                                    save_best_experiment(exp_dict, hybrid_model, args, parameter_file)
+
+                                if args.build_plot:
+                                    plot_loss_and_prediction(result, hybrid_model, args, reference_ode_parameters, plotting_reference_data)
+
+                                if str(n_exp) not in experiment_results.keys():
+                                    experiment_results[f'{n_exp}'] = {
+                                        'loss': [],
+                                        'time': []
+                                    }
+
+                                experiment_results[f'{n_exp}']['loss'].append(losses_test)
+                                experiment_results[f'{n_exp}']['time'].append(exp_dict['time'])
+
+                                title = f'Results for {averaging_run} runs'
+                                plt.rcParams['figure.figsize'] = (10, 10)
+                                plt.rcParams['font.size'] = 25
+                                epochs_range = np.arange(1, int(args.epochs) + 1, dtype=int)
+                                plt.clf()
+                                fig, ax = plt.subplots(1, 1)
+                                # PLOT THE RESULTS OF ALL EXPERIMENTS IN A COMPARISON PLOT
+                                for n_exp, experiment in experiment_results.items():
+                                    loss_history = np.asarray(experiment['loss']).mean(axis=0)
+                                    label = f'Experiment {n_exp}'
+                                    ax.plot(epochs_range, loss_history, label=label)
+                                    ax.legend()
+                                    ax.set_xlabel('epoch')
+                                    ax.set_ylabel('loss')
+                                    ax.set_title('Loss')
+                                plt.suptitle(title)
+                                plt.savefig(os.path.join(residual_directory, 'doe_results') + '_{}_Epochs.png'.format(args.epochs))
+
+                            dump_best_experiment(exp_dicts[best_experiment], setup_file, results_file)
 
                     else:
                         start_time = time.time()
@@ -1176,7 +1236,8 @@ if __name__ == '__main__':
                                     problem_type='regression',
                                     pointers=None,
                                     residual=True,
-                                    plotting_reference_data=plotting_reference_data)
+                                    plotting_reference_data=plotting_reference_data,
+                                    restore=args.restore)
                         print(f'Experiment time: {(time.time() - start_time):3.1f}s')
 
                         if args.build_plot:
@@ -1232,6 +1293,15 @@ if __name__ == '__main__':
                             if args.residual:
                                 restore_parameters(hybrid_model, parameter_file)
 
+                            if args.restore:
+                                restore_directory = os.path.join(directory, args.restore_name)
+                                orbax_checkpointer = orbax.checkpoint.PyTreeCheckpointer()
+                                options = orbax.checkpoint.CheckpointManagerOptions(max_to_keep=5, create=True)
+                                checkpoint_manager = orbax.checkpoint.CheckpointManager(restore_directory, orbax_checkpointer, options)
+                                step = checkpoint_manager.latest_step()
+                                jax_parameters = checkpoint_manager.restore(step)
+                                hybrid_model = load_jax_parameters(hybrid_model, jax_parameters)
+
                             # if args.restore:
                             #     hybrid_model = restore_parameters(hybrid_model, restore_parameter_file)
 
@@ -1257,7 +1327,7 @@ if __name__ == '__main__':
                                            pointers=None,
                                            residual=False,
                                            plotting_reference_data=plotting_reference_data,
-                                           restore=True)
+                                           restore=args.restore)
                             experiment_time = time.time() - experiment_start_time
 
                             hybrid_model, ckpt = get_best_parameters(hybrid_model, residual_directory)
@@ -1319,7 +1389,8 @@ if __name__ == '__main__':
                                     problem_type='regression',
                                     pointers=None,
                                     residual=False,
-                                    plotting_reference_data=plotting_reference_data)
+                                    plotting_reference_data=plotting_reference_data,
+                                    restore=args.restore)
                         print(f'Elapsed time: {time.time() - start_time} seconds')
 
                         hybrid_model, ckpt = get_best_parameters(hybrid_model, residual_directory)
@@ -1404,7 +1475,8 @@ if __name__ == '__main__':
                                 eval_freq=args.eval_freq,
                                 problem_type='regression',
                                 pointers=pointers,
-                                plotting_reference_data=plotting_reference_data)
+                                plotting_reference_data=plotting_reference_data,
+                                restore=args.restore)
                     print(f'Elapsed time: {time.time() - start_time} seconds')
                     if args.build_plot:
                         build_plot(args.epochs, args.model, args.dataset, os.path.join(results_directory, f'Loss.png'),
@@ -1485,7 +1557,8 @@ if __name__ == '__main__':
                                    problem_type='regression',
                                    pointers=None,
                                    residual=True,
-                                   plotting_reference_data=plotting_reference_data)
+                                   plotting_reference_data=plotting_reference_data,
+                                   restore=args.restore)
                     experiment_time = time.time() - start_time
                     accuracies_train, accuracies_test, losses_train, losses_test = result
                     best_param_file = os.path.join(plotting_reference_data['results_directory'], 'best_params.pt')
@@ -1602,7 +1675,8 @@ if __name__ == '__main__':
                                 problem_type='regression',
                                 pointers=None,
                                 residual=False,
-                                plotting_reference_data=plotting_reference_data)
+                                plotting_reference_data=plotting_reference_data,
+                                restore=args.restore)
                     experiment_time = time.time() - start_time
                     accuracies_train, accuracies_test, losses_train, losses_test = result
                     best_param_file = os.path.join(plotting_reference_data['results_directory'], 'best_params.pt')
