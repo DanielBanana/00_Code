@@ -55,7 +55,7 @@ class Particle(nn.Module):
             if self.residual:
                 return self.model(X)
             else:
-                output =  self.model()
+                output = self.model()
                 if type(output) == np.ndarray:
                     output = torch.tensor(output)
                 return output
