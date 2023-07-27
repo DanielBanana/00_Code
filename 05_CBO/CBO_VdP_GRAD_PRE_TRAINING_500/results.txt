@@ -1,0 +1,3 @@
+Best Result - Training loss: 85.89531, Validation loss: 72.61458, Time: 235.507
+Best experiment: 0
+Best Result - Training loss: 85.89531, Validation loss: 72.61458, Time: 5440.630

@@ -1,0 +1,14 @@
+loss: 85.89531008971299
+loss_test: 72.61457970154216
+n_exp: 0
+setup:
+  alpha: 50
+  cooling: false
+  dt: 0.1
+  l: 1.0
+  layer_size: 25
+  layers: 1
+  particles: 75
+  particles_batch_size: 10
+  sigma: 1.0
+time: 235.50675082206726
