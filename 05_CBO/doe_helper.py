@@ -36,7 +36,7 @@ def create_argument_list(experiment):
     argument_list = []
     for k, v in zip(ks, vs):
         # experiment.pop(k)
-        argument_list += [f'--{k}', str(v)]
+        argument_list += [f'--{k}', f'{v}']
     return argument_list
 
 if __name__ == '__main__':
@@ -44,11 +44,11 @@ if __name__ == '__main__':
     parser.add_argument('--script_file', type=str, default='11_CBO_single_experiment.py', help='The script for the design of experiments')
     parser.add_argument('--argument_file', type=str, default='doe_arguments.yaml',
                         help='The yaml file which contains the DoE arguments for the script')
-    parser.add_argument('--results_directory_name', type=str, default='DoE_Residual',
+    parser.add_argument('--results_directory_name', type=str, default='DoE_VdP_Particles (save)',
                         help='The yaml file which contains the DoE arguments for the script')
     parser.add_argument('--results_file', type=str, default='doe_results.yaml',
                         help='The yaml file which contains the DoE arguments for the script')
-    parser.add_argument('--n_runs', type=int, default=10)
+    parser.add_argument('--n_runs', type=int, default=3)
     args = parser.parse_args()
 
 
