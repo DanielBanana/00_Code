@@ -11,7 +11,7 @@ class MNIST_726x10(nn.Module):
             nn.Flatten(1, 3),
             nn.Linear(28 ** 2, 10),
             nn.ReLU(),
-            nn.BatchNorm1d(10, affine=False, momentum=None),
+            nn.BatchNorm1d(10, affine=False),
             nn.LogSoftmax(),
         )
 
@@ -26,7 +26,7 @@ class MNIST_726x20(nn.Module):
             nn.Flatten(1, 3),
             nn.Linear(28 ** 2, 20),
             nn.ReLU(),
-            nn.BatchNorm1d(20, affine=False, momentum=None),
+            nn.BatchNorm1d(20, affine=False),
             nn.LogSoftmax(),
         )
 
@@ -58,13 +58,13 @@ class PARA_5x5x5(nn.Module):
         self.model = nn.Sequential(
             nn.Linear(1, 5),
             nn.ReLU(),
-            nn.BatchNorm1d(5, affine=False, momentum=None),
+            nn.BatchNorm1d(5, affine=False),
             nn.Linear(5, 5),
             nn.ReLU(),
-            nn.BatchNorm1d(5, affine=False, momentum=None),
+            nn.BatchNorm1d(5, affine=False),
             nn.Linear(5, 5),
             nn.ReLU(),
-            nn.BatchNorm1d(5, affine=False, momentum=None),
+            nn.BatchNorm1d(5, affine=False),
             nn.Linear(5, 1),
         )
 
@@ -78,10 +78,10 @@ class PARA_7x7(nn.Module):
         self.model = nn.Sequential(
             nn.Linear(1, 7),
             nn.ReLU(),
-            nn.BatchNorm1d(7, affine=False, momentum=None),
+            nn.BatchNorm1d(7, affine=False),
             nn.Linear(7, 7),
             nn.ReLU(),
-            nn.BatchNorm1d(7, affine=False, momentum=None),
+            nn.BatchNorm1d(7, affine=False),
             nn.Linear(7, 1),
         )
 
@@ -95,7 +95,21 @@ class PARA_25(nn.Module):
         self.model = nn.Sequential(
             nn.Linear(1, 25),
             nn.ReLU(),
-            nn.BatchNorm1d(25, affine=False, momentum=None),
+            nn.BatchNorm1d(25, affine=False),
+            nn.Linear(25, 1),
+        )
+
+    def forward(self, x):
+        return self.model(x)
+
+class PARA_2x25(nn.Module):
+    def __init__(self):
+        super(PARA_2x25, self).__init__()
+
+        self.model = nn.Sequential(
+            nn.Linear(2, 25),
+            nn.ReLU(),
+            nn.BatchNorm1d(25, affine=False),
             nn.Linear(25, 1),
         )
 
