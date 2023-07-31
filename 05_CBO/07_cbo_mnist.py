@@ -32,6 +32,7 @@ MODELS = {
     'PARA_5x5x5' : PARA_5x5x5,
     'PARA_7x7': PARA_7x7,
     'PARA_25': PARA_25,
+    'PARA_2x25': PARA_2x25,
     'LeNet1': LeNet1,
     'LeNet5': LeNet5,
     'Net': Net
@@ -239,7 +240,7 @@ if __name__ == '__main__':
 
     parser.add_argument('--model', type=str, default='SimpleMLP', help=f'architecture to use',
                         choices=list(MODELS.keys()))
-    parser.add_argument('--dataset', type=str, default='SHIFTED-PARABOLA', help='dataset to use',
+    parser.add_argument('--dataset', type=str, default='PARABOLA', help='dataset to use',
                         choices=list(DATASETS.keys()))
 
     parser.add_argument('--device', type=str, choices=['cuda', 'cpu'], default='cuda',
@@ -274,7 +275,7 @@ if __name__ == '__main__':
                                                                    'samples-level batches')
     parser.add_argument('--save-model', action='store_true', default=True,
                         help='For Saving the current Model')
-    parser.add_argument('--results_directory_name', required=False, type=str, default='CBO_SHIFTED-PARABOLA',
+    parser.add_argument('--results_directory_name', required=False, type=str, default='CBO_PARABOLA',
                         help='name under which the results should be saved, like plots and such')
     parser.add_argument('--n_runs', type=int, default=3,
                         help='DoE Parameter; how often each configuration should be run to compute an average')
@@ -296,7 +297,7 @@ if __name__ == '__main__':
     results_directory = create_results_directory(directory=directory, results_directory_name=args.results_directory_name)
 
     train_dataloader, test_dataloader = DATASETS[args.dataset](train_batch_size=args.batch_size,
-                                                               test_batch_size=1000)
+                                                               test_batch_size=10000)
 
     print(results_directory)
 
@@ -327,9 +328,12 @@ if __name__ == '__main__':
         plot_file = os.path.join(results_directory, plot_file_name)
 
         if args.dataset == 'PARABOLA' or args.dataset == 'SHIFTED-PARABOLA':
-            doe_models = ['PARA_25']
-            doe_epochs = [5]
-            doe_particles = [200, 500]
+            if args.dataset == 'PARABOLA':
+                doe_models = ['PARA_25']
+            else:
+                doe_models = ['PARA_2x25']
+            doe_epochs = [100]
+            doe_particles = [76]
         else:
             doe_models = ['MNIST_726x10', 'MNIST_726x10x10', 'MNIST_726x20']
             doe_epochs = [15]
@@ -385,13 +389,13 @@ if __name__ == '__main__':
                                                                test_batch_size=10000)
 
                 # Should only be one iteration since batch_size = number of samples)
-                for X, y in (plot_dataloader_train):
-                    nn_output = model(X).detach()
-                    fig, ax = plt.subplots()
-                    ax.scatter(X, y, label='Reference')
-                    ax.scatter(X, nn_output, label='Prediction')
-                    ax.legend()
-                    fig.savefig(os.path.join(experiment_directory, 'prediction_' + args.plot_path))
+                # for X, y in (plot_dataloader_train):
+                #     nn_output = model(X).detach()
+                #     fig, ax = plt.subplots()
+                #     ax.scatter(X, y, label='Reference')
+                #     ax.scatter(X, nn_output, label='Prediction')
+                #     ax.legend()
+                #     fig.savefig(os.path.join(experiment_directory, 'prediction_' + args.plot_path))
 
                 print('Elapsed time: {:.1f} seconds'.format(elapsed_time))
                 if args.build_plot:
