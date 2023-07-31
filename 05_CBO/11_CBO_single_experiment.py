@@ -33,6 +33,7 @@ from utils import build_plot, result_plot_multi_dim, create_results_directory, c
 
 import logging
 from sklearn.preprocessing import MinMaxScaler
+from typing import List
 
 MODELS = {
     'SimpleMLP': SimpleMLP,
@@ -559,7 +560,6 @@ def train(model:Hybrid_FMU or Hybrid_Python,
                 else:
                     pred_train = torch.tensor(model(stim=False))
 
-
             loss_train = _evaluate_reg(pred_train, output_train, F.mse_loss).cpu()
             train_acc = 0.0
 
@@ -595,10 +595,7 @@ def train(model:Hybrid_FMU or Hybrid_Python,
         losses_train.append(float(loss_whole_trajectory.detach().numpy()))
         accuracies_train.append(acc_whole_trajectory)
 
-        # if run_file is not None:
-        #     with open(run_file, 'a') as file:
-        #         file.write('Trajectory Loss (Training): {:.5f}'.format(loss_whole_trajectory.item()))
-        logger.info('Trajectory Loss (Training): {:.5f}'.format(loss_whole_trajectory.item()))
+        logger.info('Loss (Training): {:.5f}'.format(loss_whole_trajectory.item()))
 
         with torch.no_grad():
             if residual:
@@ -619,11 +616,7 @@ def train(model:Hybrid_FMU or Hybrid_Python,
         losses_test.append(float(loss_whole_trajectory.detach().numpy()))
         accuracies_test.append(acc_whole_trajectory)
 
-        # print('\nTest set: Average loss: {:.4f}, Accuracy: ({:.0f}%)\n'.format(loss_test, acc_test*100))
-        # if run_file is not None:
-        #     with open(run_file, 'a') as file:
-        #         file.write('Trajectory Loss (Testing): {:.5f}'.format(loss_whole_trajectory.item()))
-        logger.info('Trajectory Loss (Testing): {:.5f}'.format(loss_whole_trajectory.item()))
+        logger.info('Loss (Testing): {:.5f}'.format(loss_whole_trajectory.item()))
 
         if losses_test[-1] < best_loss:
             best_loss = losses_test[-1]
@@ -680,7 +673,6 @@ def determine_device(device_type, use_multiprocessing):
         use_multiprocessing = False
     return torch.device(device_type), use_multiprocessing
 
-
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
@@ -697,8 +689,8 @@ if __name__ == '__main__':
     # NUMERICAL PROBLEM SETUP
     parser.add_argument('--start', type=float, default=0.0, help='Start value of the ODE integration')
     parser.add_argument('--end', type=float, default=20.0, help='End value of the ODE integration')
-    parser.add_argument('--n_steps', type=float, default=10001, help='How many integration steps to perform')
-    parser.add_argument('--ic', type=list, default=[1.0, 0.0], help='initial_condition of the ODE')
+    parser.add_argument('--n_steps', type=int, default=10001, help='How many integration steps to perform')
+    parser.add_argument('--ic', type=List, default=[1.0, 0.0], help='initial_condition of the ODE')
     parser.add_argument('--kappa', type=float, default=1.0, help='oscillation constant of the VdP oscillation term')
     parser.add_argument('--mu', type=float, default=8.53, help='damping constant of the VdP damping term')
     parser.add_argument('--mass', type=float, default=1.0, help='mass constant of the VdP system')
@@ -748,12 +740,13 @@ if __name__ == '__main__':
                                                                    'samples-level batches')
     parser.add_argument('--restore', required=False, type=bool, default=False,
                         help='restore previous parameters')
-
+    parser.add_argument('--restore_name', required=False, type=str, default='ckpt')
 
     args = parser.parse_args()
+
+    path = os.path.abspath(__file__)
+    directory = os.path.sep.join(path.split(os.path.sep)[:-1])
     if args.results_directory is None:
-        path = os.path.abspath(__file__)
-        directory = os.path.sep.join(path.split(os.path.sep)[:-1])
         args.results_directory = create_results_directory(directory=directory, results_directory_name='unnamed_CBO')
 
     log_file = os.path.join(args.results_directory, 'CBO.log')
@@ -782,6 +775,14 @@ if __name__ == '__main__':
                                'z_ref_test': z_ref_test,
                                'results_directory': args.results_directory}
 
+    if args.restore:
+        restore_directory = os.path.join(directory, args.restore_name)
+        orbax_checkpointer = orbax.checkpoint.PyTreeCheckpointer()
+        options = orbax.checkpoint.CheckpointManagerOptions(max_to_keep=5, create=True)
+        checkpoint_manager = orbax.checkpoint.CheckpointManager(restore_directory, orbax_checkpointer, options)
+        step = checkpoint_manager.latest_step()
+        jax_parameters = checkpoint_manager.restore(step)
+
     if args.fmu:
         logger.error('FMU not yet implemented')
         raise NotImplementedError
@@ -804,6 +805,9 @@ if __name__ == '__main__':
             layers = layers = [2] + [args.layer_size]*args.layers + [1]
             augment_model = CustomMLP(layers)
             hybrid_model = Hybrid_Python(reference_ode_parameters, augment_model, ic, t_train, mode='residual')
+
+            if args.restore:
+                hybrid_model = load_jax_parameters(hybrid_model, jax_parameters)
 
             logger.info('Training...')
             result = train(model=hybrid_model,
@@ -853,6 +857,7 @@ if __name__ == '__main__':
                 yaml.dump(results_dict, file)
 
         if args.trajectory:
+            logger.info('Preparing trajectory experiment.')
             # CONVERT THE REFERENCE DATA TO A DATASET
             train_dataset = create_generic_dataset(torch.tensor(t_train), torch.tensor(z_ref_train))
             test_dataset = create_generic_dataset(torch.tensor(t_test), torch.tensor(z_ref_test))
