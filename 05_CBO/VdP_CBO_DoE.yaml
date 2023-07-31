@@ -1,35 +1,29 @@
 fixed_arguments:
   start: 0.0
   end: 20.0
-  n_steps: 60001
-  ic:
-    - 0.0
-    - 1.0
+  n_steps: 10001
   kappa: 1.0
   mu: 8.53
   mass: 1.0
   layers: 1
   layer_size: 25
-  residual: True
-  trajectory: False
-  epochs: 100
+  residual: 1
+  epochs: 200
   batch_size: 50
   particles_batch_size: 20
-  alpha: 100.0
+  alpha: 50.0
   l: 1.0
-  anisotropic: True
+  anisotropic: true
   eps: 0.00001
-  partial_update: True
-  cooling: False
+  partial_update: true
   eval_freq: 10
+  restore_name: '500_res_steps/ckpt'
 variable_arguments:
   dt:
-  - 0.1
   - 0.01
   particles:
-  - 100
-  - 1000
+  - 76
+  - 152
+  - 304
   sigma:
-  - 0.3162
-  - 0.6324
   - 1.0
