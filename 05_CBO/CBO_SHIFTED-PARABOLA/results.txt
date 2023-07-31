@@ -1,0 +1,4 @@
+
+Experiment 0/1, Best Epoch: 98/99, Best Loss: 42389.7891, Best Accuracy: (0%), Final Loss: 42392.3398, Final Accuracy: (0%), NN-Evaluations: 143720, Part./Par.: 75.2475%, Time: 632.2
+Experiment 0/1, Best Epoch: 99/99, Best Loss: 42398.3242, Best Accuracy: (0%), Final Loss: 42398.3242, Final Accuracy: (0%), NN-Evaluations: 143720, Part./Par.: 75.2475%, Time: 867.0
+Experiment 0/1, Best Epoch: 94/99, Best Loss: 42386.4531, Best Accuracy: (0%), Final Loss: 42388.3242, Final Accuracy: (0%), NN-Evaluations: 143720, Part./Par.: 75.2475%, Time: 584.0
