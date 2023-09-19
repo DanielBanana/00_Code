@@ -1,0 +1,19 @@
+Building the FMU:
+
+    Switch to directory /build
+
+    run the script: ./build.sh
+
+    (on Windows build_VC_x64.bat)
+
+Deploying the FMU:
+
+    run the script: ./deploy.sh
+
+    (or on Windows deploy.bat)
+
+The FMU should now be created.
+
+Test the FMU with the Compliance Checker
+
+fmuCheck.linux64 *FMUNAME*.fmu
