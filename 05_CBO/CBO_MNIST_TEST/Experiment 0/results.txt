@@ -1,0 +1,13 @@
+{'models': 'MNIST_726x10', 'particles': 100, 'epochs': 15}
+Particles to Trainable Parameters: 100/7850 (1.274%)
+Train Epoch: 0 	Loss: 2.184840
+Test set: Average Loss: 2.1609, Accuracy: (28%)
+
+Train Epoch: 1 	Loss: 2.179135
+Test set: Average Loss: 2.1609, Accuracy: (28%)
+
+Train Epoch: 2 	Loss: 2.179778
+Test set: Average Loss: 2.1609, Accuracy: (28%)
+
+Train Epoch: 3 	Loss: 2.179815
+Test set: Average Loss: 2.1609, Accuracy: (28%)
