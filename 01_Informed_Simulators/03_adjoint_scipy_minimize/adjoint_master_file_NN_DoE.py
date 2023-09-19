@@ -48,6 +48,33 @@ Naming Conventions:
 from jax.config import config
 config.update("jax_enable_x64", True)
 
+class AdamOptim():
+    def __init__(self, eta=0.01, beta1=0.9, beta2=0.999, epsilon=1e-8):
+        self.m_dp, self.v_dp = 0, 0
+        self.m_db, self.v_db = 0, 0
+        self.beta1 = beta1
+        self.beta2 = beta2
+        self.epsilon = epsilon
+        self.eta = eta
+    def update(self, t, p, dp):
+        ## dw, db are from current minibatch
+        ## momentum beta 1
+        # *** weights *** #
+        self.m_dp = self.beta1*self.m_dp + (1-self.beta1)*dp
+
+        ## rms beta 2
+        # *** weights *** #
+        self.v_dp = self.beta2*self.v_dp + (1-self.beta2)*(dp**2)
+
+        ## bias correction
+        m_dp_corr = self.m_dp/(1-self.beta1**t)
+        v_dp_corr = self.v_dp/(1-self.beta2**t)
+
+        ## update weights and biases
+        p = p - self.eta*(m_dp_corr/(np.sqrt(v_dp_corr)+self.epsilon))
+        return p
+
+
 
 @jit
 def ode(z, t, ode_parameters):
@@ -638,16 +665,16 @@ if __name__ == '__main__':
     parser.add_argument('--mu', type=float, default=8.53, help='damping constant of the VdP damping term')
     parser.add_argument('--mass', type=float, default=1.0, help='mass constant of the VdP system')
     parser.add_argument('--start', type=float, default=0.0, help='Start value of the ODE integration')
-    parser.add_argument('--end', type=float, default=5.0, help='End value of the ODE integration')
-    parser.add_argument('--n_steps', type=float, default=501, help='How many integration steps to perform')
+    parser.add_argument('--end', type=float, default=20.0, help='End value of the ODE integration')
+    parser.add_argument('--n_steps', type=float, default=10001, help='How many integration steps to perform')
     parser.add_argument('--aug_state', type=bool, default=False, help='Whether or not to use the augemented state for the ODE dynamics')
     parser.add_argument('--aug_dim', type=int, default=4, help='Number of augment dimensions')
-    parser.add_argument('--stimulate', type=bool, default=False, help='Whether or not to use the stimulated dynamics')
+    parser.add_argument('--stimulate', type=bool, default=True, help='Whether or not to use the stimulated dynamics')
     parser.add_argument('--simple_problem', type=bool, default=False, help='Whether or not to use a simple damped oscillator instead of VdP')
 
     # NEURAL NETWORK OPTIONS
-    parser.add_argument('--layers', type=int, default=2, help='Number of hidden layers')
-    parser.add_argument('--layer_size', type=int, default=10, help='Number of neurons in a hidden layer')
+    parser.add_argument('--layers', type=int, default=1, help='Number of hidden layers')
+    parser.add_argument('--layer_size', type=int, default=25, help='Number of neurons in a hidden layer')
 
     # OPTIMIZER OPTIONS
     parser.add_argument('--method', type=str, default='BFGS', help='Which optimisation method to use')
@@ -659,14 +686,14 @@ if __name__ == '__main__':
     parser.add_argument('--n_batches', type=int, default=40, help='How many (arbitrary) batches to create')
     parser.add_argument('--batch_size', type=int, default=200, help='batch size (for samples-level batching)')
     parser.add_argument('--clean_batching', type=bool, default=True, help='Whether or not to split training data into with no overlap')
-    parser.add_argument('--n_clean_batches', type=int, default=10, help='How many clean batches to create')
+    parser.add_argument('--n_clean_batches', type=int, default=100, help='How many clean batches to create')
 
     # TRANSFER LEARNING (RESIDUAL TRAINING) OPTIONS
-    parser.add_argument('--transfer_learning', type=bool, default=True, help='Tolerance for the optimisation method')
-    parser.add_argument('--res_steps', type=float, default=1000, help='Number of steps for the Pretraining on the Residuals')
+    parser.add_argument('--transfer_learning', type=bool, default=False, help='Tolerance for the optimisation method')
+    parser.add_argument('--res_steps', type=float, default=2000, help='Number of steps for the Pretraining on the Residuals')
 
     # MISC OPTIONS
-    parser.add_argument('--results_name', required=False, type=str, default='plot_test',
+    parser.add_argument('--results_name', required=False, type=str, default='2Neurons',
                         help='name under which the results should be saved, like plots and such, ignored for DoE')
     parser.add_argument('--loss_cutoff', type=float, default=1e-3, help='lower bound for validation loss after which training is stopped')
     parser.add_argument('--build_plot', required=False, default=True, action='store_true',
@@ -682,9 +709,9 @@ if __name__ == '__main__':
     # DESIGN OF EXPERIMENTS OPTIONS
     parser.add_argument('--doe_residual', required=False, type=bool, default=True,
                         help='Perform Design of Experiments with NN Parameters and ODE Hyperparameters on Residuals')
-    parser.add_argument('--doe_trajectory', required=False, type=bool, default=True,
+    parser.add_argument('--doe_trajectory', required=False, type=bool, default=False,
                         help='Perform Design of Experiments with NN Parameters and ODE Hyperparameters on Trajectory')
-    parser.add_argument('--doe_title', required=False, type=str, default='NN_parameter_transfer',
+    parser.add_argument('--doe_title', required=False, type=str, default='TEST_DOE',
                         help='Name for the DoE')
 
     parser.add_argument('--eval_freq', type=int, default=100, help='evaluate test accuracy every EVAL_FREQ '
@@ -862,7 +889,7 @@ if __name__ == '__main__':
 
             residual_doe_parameters = OrderedDict({'lambda': [0.0],
                                                    'layers': [1],
-                                                   'l_size': [10, 20]})
+                                                   'l_size': [10,15]})
 
             levels = [len(val) for val in residual_doe_parameters.values()]
 
@@ -959,7 +986,11 @@ if __name__ == '__main__':
                                 'residual_outputs': residual_outputs}
 
                 try:
-                    residual_result = minimize(residual_wrapper, flat_nn_parameters, method=args.method, jac=True, args=optimizer_args, options={'maxiter':args.res_steps})
+                    # residual_result = minimize(residual_wrapper, flat_nn_parameters, method=args.method, jac=True, args=optimizer_args, options={'maxiter':args.res_steps})
+                    Adam = AdamOptim(eta=0.1, beta1=0.99, beta2=0.999, epsilon=1e-8)
+                    for i in range(args.res_steps):
+                        loss, grad = residual_wrapper(flat_nn_parameters=flat_nn_parameters, optimizer_args=optimizer_args)
+                        flat_nn_parameters = Adam.update(i+1, flat_nn_parameters, grad)
                 except (KeyboardInterrupt, UserWarning):
                     pass
                 nn_parameters = optimizer_args['saved_nn_parameters']
