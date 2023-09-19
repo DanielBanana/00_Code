@@ -137,7 +137,7 @@ class Optimizer:
                 new_V = pool.starmap(_batch_step, params)
             for new_batch_V, batch in zip(new_V, batches):
                 self.V[batch] = new_batch_V
-            self._maybe_apply_random_shift()
+            # self._maybe_apply_random_shift()
             self._maybe_apply_gradient_shift()
         else:
             for particles_batch in self.particles_dataloader:
@@ -151,7 +151,7 @@ class Optimizer:
                 else:
                     self.V = cbo_update(self.V, self.V_alpha, self.anisotropic,
                                         self.l, self.sigma, self.dt, self.device)
-                self._maybe_apply_random_shift()
+                # self._maybe_apply_random_shift()
                 self._maybe_apply_gradient_shift(batch=particles_batch)
         self._set_particles_params(self.V)
         self._maybe_apply_common_drift()
