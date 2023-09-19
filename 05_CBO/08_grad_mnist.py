@@ -36,6 +36,9 @@ MODELS = {
     'PARA_5x5x5' : PARA_5x5x5,
     'PARA_7x7': PARA_7x7,
     'PARA_25': PARA_25,
+    'PARA_15': PARA_15,
+    'PARA_10': PARA_10,
+    'PARA_5': PARA_5,
     'LeNet1': LeNet1,
     'LeNet5': LeNet5,
     'Net': Net
@@ -79,7 +82,7 @@ def train(model, train_dataloader, test_dataloader, device, use_multiprocessing,
     #                       use_multiprocessing=use_multiprocessing, n_processes=processes,
     #                       particles_batch_size=particles_batch_size, device=device)
 
-    optimizer = optim.Adadelta(model.parameters(), lr=lr)
+    optimizer = optim.Adam(model.parameters(), lr=lr)
     scheduler = StepLR(optimizer, step_size=1, gamma=gamma)
 
     if problem_type == 'classification':
@@ -270,7 +273,7 @@ if __name__ == '__main__':
 
     parser.add_argument('--model', type=str, default='Net', help=f'architecture to use',
                         choices=list(MODELS.keys()))
-    parser.add_argument('--dataset', type=str, default='MNIST', help='dataset to use',
+    parser.add_argument('--dataset', type=str, default='PARABOLA', help='dataset to use',
                         choices=list(DATASETS.keys()))
 
     parser.add_argument('--device', type=str, choices=['cuda', 'cpu'], default='cuda',
@@ -297,7 +300,7 @@ if __name__ == '__main__':
                                                                      'samples-level batches')
     parser.add_argument('--save-model', action='store_true', default=True,
                         help='For Saving the current Model')
-    parser.add_argument('--results_directory_name', required=False, type=str, default='GRAD_MNIST_RESULTS',
+    parser.add_argument('--results_directory_name', required=False, type=str, default='GRAD_PARABOLA_SMALLER_NETS',
                         help='name under which the results should be saved, like plots and such')
     parser.add_argument('--n_runs', type=int, default=10,
                         help='DoE Parameter; how often each configuration should be run to compute an average')
@@ -349,11 +352,11 @@ if __name__ == '__main__':
         plot_file = os.path.join(results_directory, plot_file_name)
 
         if args.dataset == 'PARABOLA':
-            doe_models = ['PARA_5x5x5', 'PARA_7x7', 'PARA_25']
-            doe_epochs = [5, 10, 15]
+            doe_models = ['PARA_25', 'PARA_15' ,'PARA_5',]
+            doe_epochs = [15]
         else:
             doe_models = ['MNIST_726x10', 'MNIST_726x10x10', 'MNIST_726x20']
-            doe_epochs = [5, 10, 15]
+            doe_epochs = [15]
 
 
         doe_parameters = OrderedDict({'models': doe_models,

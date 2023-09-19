@@ -32,6 +32,8 @@ MODELS = {
     'PARA_5x5x5' : PARA_5x5x5,
     'PARA_7x7': PARA_7x7,
     'PARA_25': PARA_25,
+    'PARA_15': PARA_15,
+    'PARA_5': PARA_5,
     'PARA_2x25': PARA_2x25,
     'LeNet1': LeNet1,
     'LeNet5': LeNet5,
@@ -115,7 +117,7 @@ def train(model, train_dataloader, test_dataloader, device, use_multiprocessing,
         train_accuracies.append(np.mean(epoch_train_accuracies))
         train_losses.append(np.mean(epoch_train_losses))
         with open(run_file, 'a') as file:
-            file.write('\nTrain Epoch: {} \tLoss: {:.6f}'.format(epoch, loss_train.item()))
+            file.write('\nTrain Epoch: {} \tLoss: {:.6f}'.format(epoch, np.mean(epoch_train_losses)))
 
         with torch.no_grad():
             losses = []
@@ -240,7 +242,7 @@ if __name__ == '__main__':
 
     parser.add_argument('--model', type=str, default='SimpleMLP', help=f'architecture to use',
                         choices=list(MODELS.keys()))
-    parser.add_argument('--dataset', type=str, default='PARABOLA', help='dataset to use',
+    parser.add_argument('--dataset', type=str, default='MNIST', help='dataset to use',
                         choices=list(DATASETS.keys()))
 
     parser.add_argument('--device', type=str, choices=['cuda', 'cpu'], default='cuda',
@@ -254,7 +256,7 @@ if __name__ == '__main__':
     parser.add_argument('--epochs', type=int, default=100, help='train for EPOCHS epochs')
     parser.add_argument('--batch_size', type=int, default=60, help='batch size (for samples-level batching)')
     parser.add_argument('--particles', type=int, default=100, help='')
-    parser.add_argument('--particles_batch_size', type=int, default=10, help='batch size '
+    parser.add_argument('--particles_batch_size', type=int, default=20, help='batch size '
                                                                              '(for particles-level batching)')
 
     parser.add_argument('--alpha', type=float, default=50, help='alpha from CBO dynamics')
@@ -263,7 +265,7 @@ if __name__ == '__main__':
     parser.add_argument('--dt', type=float, default=0.1, help='dt from CBO dynamics')
     parser.add_argument('--anisotropic', type=bool, default=True, help='whether to use anisotropic or not')
     parser.add_argument('--eps', type=float, default=1e-5, help='threshold for additional random shift')
-    parser.add_argument('--partial_update', type=bool, default=True, help='whether to use partial or full update')
+    parser.add_argument('--partial_update', type=bool, default=False, help='whether to use partial or full update')
     parser.add_argument('--cooling', type=bool, default=False, help='whether to apply cooling strategy')
 
     parser.add_argument('--build_plot', required=False, action='store_true',
@@ -275,9 +277,9 @@ if __name__ == '__main__':
                                                                    'samples-level batches')
     parser.add_argument('--save-model', action='store_true', default=True,
                         help='For Saving the current Model')
-    parser.add_argument('--results_directory_name', required=False, type=str, default='CBO_PARABOLA',
+    parser.add_argument('--results_directory_name', required=False, type=str, default='CBO_MNIST_TEST',
                         help='name under which the results should be saved, like plots and such')
-    parser.add_argument('--n_runs', type=int, default=3,
+    parser.add_argument('--n_runs', type=int, default=10,
                         help='DoE Parameter; how often each configuration should be run to compute an average')
 
     doe = True
@@ -329,15 +331,15 @@ if __name__ == '__main__':
 
         if args.dataset == 'PARABOLA' or args.dataset == 'SHIFTED-PARABOLA':
             if args.dataset == 'PARABOLA':
-                doe_models = ['PARA_25']
+                doe_models = ['PARA_25', 'PARA_15', 'PARA_5']
             else:
                 doe_models = ['PARA_2x25']
-            doe_epochs = [100]
-            doe_particles = [76]
+            doe_epochs = [15]
+            doe_particles = [10, 100, 200]
         else:
             doe_models = ['MNIST_726x10', 'MNIST_726x10x10', 'MNIST_726x20']
             doe_epochs = [15]
-            doe_particles = [100, 200]
+            doe_particles = [10, 100, 200]
             # doe_epochs = [1, 2]
             # doe_particles = [4, 5]
 
