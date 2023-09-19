@@ -82,13 +82,19 @@ def J(z, z_ref, optimisation_parameters):
     '''Calculates the complete loss of a trajectory w.r.t. a reference trajectory'''
     return np.mean(g(z, z_ref, optimisation_parameters))
 
-def create_residuals(z_ref, t, fmu_evaluator: FMUEvaluator, pointers):
+def J_residual(inputs, outputs, nn_parameters):
+    def squared_error(input, output):
+        pred = jitted_neural_network(nn_parameters, input)
+        return (output-pred)**2
+    return jnp.mean(jax.vmap(squared_error)(inputs, outputs), axis=0)[0]
+
+def create_residuals(z_ref, t, z_dot_fmu):
     z_dot = (z_ref[1:] - z_ref[:-1])/(t[1:] - t[:-1]).reshape(-1,1)
     # v_ode = jax.vmap(lambda z_ref, t, ode_parameters: ode_res(z_ref, t, ode_parameters), in_axes=(0, 0, None))
-    residuals = []
-    for z_ref_value, t_value in np.dstack((z_ref[:-1], t[:-1])):
-        residuals.append(z_dot - pointers.dx)
-    return np.asarray(residuals)
+    residual = z_dot - z_dot_fmu
+    # for z_ref_value, t_value in np.dstack((z_ref[:-1], t[:-1])):
+    #     residuals.append(z_dot - pointers.dx)
+    return np.asarray(residual)
 
 def f_euler(z0, t, fmu_evaluator: FMUEvaluator, model, model_parameters=None, save_derivatives=True):
     '''Applies euler to the VdP ODE by calling the fmu; returns the trajectory'''
@@ -107,24 +113,24 @@ def f_euler(z0, t, fmu_evaluator: FMUEvaluator, model, model_parameters=None, sa
         dt = t[i+1] - t[i]
 
         if fmu_evaluator.training:
-            derivatives, enterEventMode, terminateSimulation, dfmu_dz_at_t, dfmu_dinput_at_t = fmu_evaluator.evaluate_fmu(t[i], dt, model, model_parameters)
+            enterEventMode, terminateSimulation, dfmu_dz_at_t, dfmu_dinput_at_t = fmu_evaluator.evaluate_fmu(t[i], dt, model, model_parameters)
+            z[i+1] = z[i] + dt * fmu_evaluator.pointers.dx
             if save_derivatives:
                 residual_derivatives, _, __ = fmu_evaluator.get_derivatives(t[i], z[i])
-                derivatives_list.append(residual_derivatives)
+                derivatives_list.append(residual_derivatives.copy())
             dfmu_dz_trajectory.append(dfmu_dz_at_t)
             dfmu_dinput_trajectory.append(dfmu_dinput_at_t)
         else:
-            derivatives, enterEventMode, terminateSimulation = fmu_evaluator.evaluate_fmu(t[i], dt, model, model_parameters)
+            enterEventMode, terminateSimulation = fmu_evaluator.evaluate_fmu(t[i], dt, model, model_parameters)
+            z[i+1] = z[i] + dt * fmu_evaluator.pointers.dx
             if save_derivatives:
-                residual_derivatives, _, __ = fmu_evaluator.get_derivatives(t[i], z[i])
-                derivatives_list.append(residual_derivatives)
+                residual_derivatives = fmu_evaluator.get_derivatives(t[i], z[i])
+                derivatives_list.append(residual_derivatives.copy())
 
-        z[i+1] = z[i] + dt * derivatives
+        # z[i+1] = z[i] + dt * derivatives
 
         if terminateSimulation:
             break
-
-
 
     # We get on jacobian less then we get datapoints, since we get the jacobian
     # with every derivative we calculate, and we have one datapoint already given
@@ -137,12 +143,12 @@ def f_euler(z0, t, fmu_evaluator: FMUEvaluator, model, model_parameters=None, sa
         while len(dfmu_dinput_trajectory.shape) <= 2:
             dfmu_dinput_trajectory = jnp.expand_dims(dfmu_dinput_trajectory, -1)
         if save_derivatives:
-            return z, np.asarray(dfmu_dz_trajectory), jnp.asarray(dfmu_dinput_trajectory), derivatives_list
+            return z, np.asarray(dfmu_dz_trajectory), jnp.asarray(dfmu_dinput_trajectory), np.asarray(derivatives_list)
         else:
             return z, np.asarray(dfmu_dz_trajectory), jnp.asarray(dfmu_dinput_trajectory)
     else:
         if save_derivatives:
-            return z, derivatives_list
+            return z, np.asarray(derivatives_list)
         else:
             return z
 
@@ -172,6 +178,10 @@ def adj_euler(a0, z, z_ref, t, optimisation_parameters, df_dz_trajectory):
 def damping(mu, inputs):
     return mu * (1 - inputs[0]**2) * inputs[1]
 
+def zero(model_parameters, inputs):
+    return 0.0
+
+
 def optimisation_wrapper(model_parameters, args):
     '''This is a function wrapper for the optimisation function. It returns the
     loss and the jacobian of the loss function with respect to the optimisation parameters'''
@@ -191,8 +201,6 @@ def optimisation_wrapper(model_parameters, args):
     start = time.time()
 
     model_parameters = unravel_pytree(model_parameters)
-
-
 
     z, dfmu_dz_trajectory, dfmu_dinput_trajectory = f_euler(z0, t, fmu_evaluator, model, model_parameters) # 0.06-0.09 sec
     loss = J(z, z_ref, model_parameters)
@@ -229,6 +237,38 @@ def optimisation_wrapper(model_parameters, args):
     epoch += 1
     args[11] = epoch
     return loss, flat_dJ_dtheta
+
+
+def residual_wrapper(model_parameters, args):
+
+    t = args[0]
+    z0 = args[1]
+    z_ref = args[2]
+    fmu_evaluator = args[3]
+    model = args[4]
+    z_dot_fmu = args[5]
+    # vectorized_df_dtheta_function = args[5]
+    # vectorized_df_dz_function = args[6]
+    # vectorized_dinput_dz_function = args[7]
+    # vectorized_dg_dtheta_function = args[8]
+    # dinput_dtheta_function = args[9]
+    unravel_pytree = args[10]
+    epoch = args[11]
+    start = time.time()
+
+    model_parameters = unravel_pytree(model_parameters)
+
+    outputs = create_residuals(z_ref, t, z_dot_fmu)
+    inputs = z_ref[:-1]
+
+    z = f_euler(z0, t, fmu_evaluator, model, model_parameters)
+    res_loss, gradient = jax.value_and_grad(J_residual, argnums=2)(inputs, outputs, model_parameters)
+    true_loss = float(J(z, z_ref, model_parameters))
+    flat_gradient, _ = flatten_util.ravel_pytree(gradient)
+    epoch += 1
+    end = time.time()
+    print(f'Residuals: Epoch: {epoch}, Residual Loss: {res_loss:.10f}, Trajectory Loss: {true_loss:.10f}, Time: {end-start:3.3f}')
+    return res_loss, flat_gradient
 
 # The Neural Network structure class
 class ExplicitMLP(nn.Module):
@@ -278,9 +318,13 @@ if __name__ == '__main__':
 
     # REFERENCE SOLUTION
     ####################################################################################
-
-    z_ref = f_euler(z0=z0, t=t, fmu_evaluator=fmu_evaluator, model=damping, model_parameters=mu)
+    z_ref = f_euler(z0=z0, t=t, fmu_evaluator=fmu_evaluator, model=damping, model_parameters=mu, save_derivatives=True)
     fmu_evaluator.reset_fmu(Tstart, Tend)
+
+    # PURE FMU MODEL WITH DERIVATIVES FOR RESIDUALS
+    ####################################################################################
+    # _, z_dot_fmu = f_euler(z0=z0, t=t, fmu_evaluator=fmu_evaluator, model=zero, model_parameters=None, save_derivatives=True)
+    # fmu_evaluator.reset_fmu(Tstart, Tend)
 
     # OPTIMISATION
     ####################################################################################
@@ -305,7 +349,7 @@ if __name__ == '__main__':
             z_ref,
             fmu_evaluator,
             jitted_neural_network,
-            vectorized_df_dtheta_function,
+            z_dot_fmu,
             vectorized_df_dz_function,
             vectorized_dinput_dz_function,
             vectorized_dg_dtheta_function,
@@ -317,7 +361,7 @@ if __name__ == '__main__':
 
     # Optimise the mu value via scipy
     # Optimisers: CG, BFGS, Newton-CG, L-BFGS-B, TNC, SLSQP, dogleg, trust-ncg, trust-krylov, trust-exact and trust-constr
-    res = minimize(optimisation_wrapper, flat_nn_parameters, method='BFGS', jac=True, args=args, tol=1e-8)
+    res = minimize(residual_wrapper, flat_nn_parameters, method='BFGS', jac=True, args=args, tol=1e-8)
     print(res)
 
     neural_network_parameters = res.x

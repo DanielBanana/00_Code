@@ -202,9 +202,9 @@ class FMUEvaluator:
         # If we are in Training mode return the derivatives for the next step,
         # FMU information and Optimisation jacobians; otherwise leave out jacobians
         if self.training:
-            return self.pointers.dx, enterEventMode, terminateSimulation, dfmu_dz_at_t, dfmu_dinput_at_t
+            return enterEventMode, terminateSimulation, dfmu_dz_at_t, dfmu_dinput_at_t
         else:
-            return self.pointers.dx, enterEventMode, terminateSimulation
+            return enterEventMode, terminateSimulation
 
     def get_derivatives(self, t, state):
             """Function to just evaluate the FMU with no contribution of the augment model.
@@ -227,7 +227,7 @@ class FMUEvaluator:
             status = self.fmu.setTime(t)
 
             x = self.pointers.x
-            dx = self.pointers.dx
+            dx = list(self.pointers.dx)
 
             self.pointers.x = state
 
@@ -243,7 +243,7 @@ class FMUEvaluator:
                 status = self.fmu.getDerivatives(self.pointers._pdx, self.pointers.dx.size)
 
             tmp_dx = self.pointers.dx
-            self.pointers.dx = dx
+            self.pointers.dx = np.asarray(dx)
             self.pointers.x = x
 
             # get continuous output
