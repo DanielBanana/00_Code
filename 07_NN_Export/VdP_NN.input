@@ -1,0 +1,50 @@
+{
+    "modelName": "VdP_NN",
+    "description": "",
+    "variables": [
+        {
+            "name": "ResultRootDir",
+            "valueRef": 42,
+            "variability": "fixed",
+            "causality": "parameter",
+            "initial": "exact",
+            "typeID": "String",
+            "startValue": "",
+            "description": "A writeable directory generated for each slave of this FMU to store slave-specific output/data files.",
+            "unit": ""
+        },
+        {
+            "name": "x",
+            "valueRef": -1,
+            "variability": "continuous",
+            "causality": "input",
+            "initial": "calculated",
+            "typeID": "Real",
+            "startValue": "1.0",
+            "description": "Van der Pol Input x (Location)",
+            "unit": ""
+        },
+        {
+            "name": "v",
+            "valueRef": -1,
+            "variability": "continuous",
+            "causality": "input",
+            "initial": "calculated",
+            "typeID": "Real",
+            "startValue": "0.0",
+            "description": "Van der Pol Input v (Velocity)",
+            "unit": ""
+        },
+        {
+            "name": "damping",
+            "valueRef": -1,
+            "variability": "continuous",
+            "causality": "output",
+            "initial": "approx",
+            "typeID": "Real",
+            "startValue": "0.0",
+            "description": "Van der Pol damping term",
+            "unit": ""
+        }
+    ]
+}
