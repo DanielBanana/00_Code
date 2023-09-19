@@ -7,7 +7,7 @@ from copy import deepcopy
 
 
 class Particle(nn.Module):
-    def __init__(self, model, restore=True):
+    def __init__(self, model, restore=False):
         """
         Represents a particles in the consensus-based optimization. Stores a copy of the optimized model.
         :param model: the underlying model.
