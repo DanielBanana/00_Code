@@ -16,11 +16,14 @@ import argparse
 from functools import partial
 from jax import lax
 import warnings
+import logging
 
 # To use the plot_results file we need to add the uppermost folder to the PYTHONPATH
 # Only Works if file gets called from 00_Code
 sys.path.insert(0, os.getcwd())
 from plot_results import plot_results, plot_losses, get_file_path
+from utils import build_plot, result_plot_multi_dim, create_results_directory, create_results_subdirectories, create_doe_experiments, create_experiment_directory
+import yaml
 
 '''
 Naming Conventions:
@@ -41,6 +44,31 @@ Naming Conventions:
 from jax.config import config
 config.update("jax_enable_x64", True)
 
+class AdamOptim():
+    def __init__(self, eta=0.01, beta1=0.9, beta2=0.999, epsilon=1e-8):
+        self.m_dp, self.v_dp = 0, 0
+        self.m_db, self.v_db = 0, 0
+        self.beta1 = beta1
+        self.beta2 = beta2
+        self.epsilon = epsilon
+        self.eta = eta
+    def update(self, t, p, dp):
+        ## dw, db are from current minibatch
+        ## momentum beta 1
+        # *** weights *** #
+        self.m_dp = self.beta1*self.m_dp + (1-self.beta1)*dp
+
+        ## rms beta 2
+        # *** weights *** #
+        self.v_dp = self.beta2*self.v_dp + (1-self.beta2)*(dp**2)
+
+        ## bias correction
+        m_dp_corr = self.m_dp/(1-self.beta1**t)
+        v_dp_corr = self.v_dp/(1-self.beta2**t)
+
+        ## update weights and biases
+        p = p - self.eta*(m_dp_corr/(np.sqrt(v_dp_corr)+self.epsilon))
+        return p
 
 @jit
 def ode(z, t, ode_parameters):
@@ -255,54 +283,58 @@ def adjoint_step(prev_a, i, z, z_ref, t, ode_parameters, nn_parameters):
     return next_a, next_a
 
 # Based on https://www.mathworks.com/help/deeplearning/ug/dynamical-system-modeling-using-neural-ode.html#TrainNeuralODENetworkWithRungeKuttaODESolverExample-14
-def create_mini_batch(n_times_per_obs, mini_batch_size, X, adjoint, t):
+def create_mini_batch(n_batches, batch_size, X, adjoint, t):
 
     n_timesteps = t.shape[0]
     # Create batches of trajectories
-    if n_timesteps-n_times_per_obs == 0:
+    if n_timesteps-batch_size == 0:
         s = np.array([0])
     else:
-        s = np.random.choice(range(n_timesteps-n_times_per_obs), mini_batch_size)
+        s = np.random.choice(range(n_timesteps-batch_size), n_batches)
 
     x0 = X[s, :]
     a0 = adjoint[s, :]
-    targets = np.empty((mini_batch_size, n_times_per_obs, X.shape[1]))
-    adjoints = np.empty((mini_batch_size, n_times_per_obs, adjoint.shape[1]))
+    targets = np.empty((n_batches, batch_size, X.shape[1]))
+    adjoints = np.empty((n_batches, batch_size, adjoint.shape[1]))
     ts = []
 
-    for i in range(mini_batch_size):
-        targets[i, 0:n_times_per_obs, :] = X[s[i] + 0:(s[i] + n_times_per_obs), :]
-        adjoints[i, 0:n_times_per_obs, :] = adjoint[s[i] + 0:(s[i] + n_times_per_obs), :]
-        ts.append(t[s[i]:s[i]+n_times_per_obs])
+    for i in range(n_batches):
+        targets[i, 0:batch_size, :] = X[s[i] + 0:(s[i] + batch_size), :]
+        adjoints[i, 0:batch_size, :] = adjoint[s[i] + 0:(s[i] + batch_size), :]
+        ts.append(t[s[i]:s[i]+batch_size])
 
     return x0, targets, a0, adjoints, ts
 
-def create_clean_mini_batch(n_mini_batches, X, adjoint, t):
+def create_clean_mini_batch(n_batches, X, t):
     n_timesteps = t.shape[0]
     # Create batches of trajectories
-    mini_batch_size = int(n_timesteps/n_mini_batches)
-    s = [mini_batch_size * i for i in range(n_mini_batches)]
+    mini_batch_size = int(n_timesteps/n_batches)
+    s = [mini_batch_size * i for i in range(n_batches)]
     x0 = X[s, :]
-    a0 = adjoint[s, :]
-    targets = np.empty((n_mini_batches, mini_batch_size, X.shape[1]))
-    adjoints = np.empty((n_mini_batches, mini_batch_size, adjoint.shape[1]))
+    # a0 = adjoint[s, :]
+    targets = np.empty((n_batches, mini_batch_size, X.shape[1]))
+    # adjoints = np.empty((n_batches, mini_batch_size, adjoint.shape[1]))
     ts = []
-    for i in range(n_mini_batches):
+    for i in range(n_batches):
         targets[i, 0:mini_batch_size, :] = X[s[i] + 0:(s[i] + mini_batch_size), :]
-        adjoints[i, 0:mini_batch_size, :] = adjoint[s[i] + 0:(s[i] + mini_batch_size), :]
+        # adjoints[i, 0:mini_batch_size, :] = adjoint[s[i] + 0:(s[i] + mini_batch_size), :]
         ts.append(t[s[i]:s[i]+mini_batch_size])
-    return x0, targets, a0, adjoints, ts
+    return x0, targets, ts
 
-def model_loss(z0, ts, ode_parameters, nn_parameters, targets):
+def model_losses(z0, a0s, ts, ode_parameters, nn_parameters, targets):
     zs = []
     losses = []
+    adjoints = []
     # Compute Predictions
     for i, ic in enumerate(z0):
         z = hybrid_euler(ic, ts[i], ode_parameters, nn_parameters)
-        losses.append(J(z, targets[i], ode_parameters, nn_parameters))
+        adjoint = adjoint_euler(a0s[i], np.flip(z, axis=0), np.flip(targets[i], axis=0), np.flip(ts[i]), ode_parameters, nn_parameters)
+        adjoint = np.flip(adjoint, axis=0)
+        losses.append(float(J(z, targets[i], ode_parameters, nn_parameters)))
         zs.append(z)
+        adjoints.append(adjoint)
 
-    return zs, np.asarray(losses).mean()
+    return zs, adjoints, losses
 
 # Vectorize the  jacobian df_dtheta for all time points
 df_dtheta_function = lambda z, t, phi, theta: jax.jacobian(hybrid_ode, argnums=3)(z, t, phi, theta)
@@ -349,9 +381,10 @@ def residual_wrapper(flat_nn_parameters, optimizer_args):
     start = time.time()
 
     t = optimizer_args['time']
+    t_val = optimizer_args['val_time']
     z0 = optimizer_args['initial_condition']
     z_ref = optimizer_args['reference_solution']
-    z_val = optimizer_args['validation_solution']
+    z_ref_val = optimizer_args['validation_solution']
     ode_parameters = optimizer_args['reference_ode_parameters']
     unravel_pytree = optimizer_args['unravel_function']
     epoch = optimizer_args['epoch']
@@ -363,6 +396,7 @@ def residual_wrapper(flat_nn_parameters, optimizer_args):
     best_loss = optimizer_args['best_loss']
     checkpoint_manager = optimizer_args['checkpoint_manager']
     lambda_ = optimizer_args['lambda']
+    logger = optimizer_args['logger']
 
 
     # Get the parameters of the neural network out of the array structure into the
@@ -376,26 +410,35 @@ def residual_wrapper(flat_nn_parameters, optimizer_args):
     inputs = z_ref[:-1]
 
     z = hybrid_euler(z0, t, ode_parameters, nn_parameters)
+    z_val = hybrid_euler(z_ref[-1], t_val, ode_parameters, nn_parameters)
 
     # loss = J_residual(inputs, outputs, nn_parameters)
-    res_loss = J_residual(inputs, outputs, nn_parameters)
+    # res_loss = J_residual(inputs, outputs, nn_parameters)
     res_loss, gradient = jax.value_and_grad(J_residual, argnums=2)(inputs, outputs, nn_parameters)
-    true_loss = J(z, z_ref, ode_parameters, nn_parameters)
+    true_loss = float(J(z, z_ref, ode_parameters, nn_parameters))
+    true_val_loss = float(J(z_val, z_ref_val, ode_parameters, nn_parameters))
     flat_gradient, _ = flatten_util.ravel_pytree(gradient)
     optimizer_args['epoch'] += 1
     optimizer_args['losses'].append(true_loss)
-    if epoch > 0 and true_loss < best_loss:
+    optimizer_args['losses_res'].append(float(res_loss))
+    optimizer_args['losses_val'].append(true_val_loss)
+    if epoch > 0 and true_val_loss < best_loss:
         optimizer_args['saved_nn_parameters'] = nn_parameters
         optimizer_args['best_loss'] = true_loss
+        optimizer_args['best_val_loss'] = true_val_loss
         save_args = orbax_utils.save_args_from_target(nn_parameters)
         checkpoint_manager.save(epoch, nn_parameters, save_kwargs={'save_args': save_args})
 
     if epoch % checkpoint_interval == 0:
         plot_results(t, z, z_ref, results_path+f'_epoch_{epoch}')
+        plot_results(t_val, z_val, z_ref_val, results_path+f'_epoch_{epoch}_val')
+        plot_losses(epochs=list(range(len(optimizer_args['losses']))), training_losses=optimizer_args['losses'], validation_losses=optimizer_args['losses_val'], path=residual_path+'_losses')
+        plot_losses(epochs=list(range(len(optimizer_args['losses_res']))), training_losses=optimizer_args['losses_res'], path=residual_path+'_losses_res')
+
         # optimizer_args['saved_nn_parameters'] = nn_parameters
 
-    # L2_regularisation = lambda_/(2*(t.shape[0])) * np.linalg.norm(flat_nn_parameters, 2)**2
-    L2_regularisation = 0.0
+    L2_regularisation = lambda_/(2*(t.shape[0])) * np.linalg.norm(flat_nn_parameters, 2)**2
+    # L2_regularisation = 0.0
 
     end = time.time()
 
@@ -403,7 +446,7 @@ def residual_wrapper(flat_nn_parameters, optimizer_args):
     if res_loss < loss_cutoff:
         warnings.warn('Terminating Optimization: Required Loss reached')
 
-    print(f'Pretraining: Epoch: {epoch}, Residual Loss: {res_loss:.10f}, True Loss: {true_loss:.10f}, Time: {end-start:3.3f}')
+    logger.info(f'Pretraining: Epoch: {epoch}, Residual Loss: {res_loss:.10f}, True Loss: {true_loss:.10f}, Time: {end-start:3.3f}')
     return res_loss + L2_regularisation, flat_gradient
 
 def function_wrapper(flat_nn_parameters, optimizer_args):
@@ -414,6 +457,7 @@ def function_wrapper(flat_nn_parameters, optimizer_args):
 
     # Unpack the arguments
     t = optimizer_args['time']
+    t_val = optimizer_args['val_time']
     z0 = optimizer_args['initial_condition']
     z_ref = optimizer_args['reference_solution']
     z_ref_val = optimizer_args['validation_solution']
@@ -432,6 +476,7 @@ def function_wrapper(flat_nn_parameters, optimizer_args):
     best_loss = optimizer_args['best_loss']
     checkpoint_manager = optimizer_args['checkpoint_manager']
     lambda_ = optimizer_args['lambda']
+    logger = optimizer_args['logger']
 
     # Get the parameters of the neural network out of the array structure into the
     # tree structure
@@ -445,11 +490,15 @@ def function_wrapper(flat_nn_parameters, optimizer_args):
     adjoint = np.flip(adjoint, axis=0)
 
     if batching:
-        if clean_batching:
-            z0s, targets, a0s, adjoints, ts = create_clean_mini_batch(clean_n_batches, z_ref, adjoint, t)
-        else:
-            z0s, targets, a0s, adjoints, ts = create_mini_batch(n_batches, batch_size, z_ref, adjoint, t)
-        zs, loss = model_loss(z0s, ts, ode_parameters, nn_parameters, targets)
+        # if clean_batching:
+        #     # z0s, targets, a0s, adjoints_, ts = create_clean_mini_batch(clean_n_batches, z_ref, adjoint, t)
+        # else:
+        #     z0s, targets, a0s, adjoints_, ts = create_mini_batch(n_batches, batch_size, z_ref, adjoint, t)
+        a0s = np.zeros((n_batches, *z0.shape))
+        zs, adjoints, losses = model_losses(z0s, a0s, ts, ode_parameters, nn_parameters, targets)
+        logger.info(f'Batch losses: {losses}')
+        loss = np.asarray(losses).mean()
+        logger.info(f'Mean Loss on Batches: {loss}')
         gradients = []
         for z_, adjoint_, t_ in zip(zs, adjoints, ts):
             # Calculate the gradient of the hybrid ode with respect to the nn_parameters
@@ -481,19 +530,16 @@ def function_wrapper(flat_nn_parameters, optimizer_args):
         dJ_dtheta = df_dtheta
         flat_dJ_dtheta, _ = flatten_util.ravel_pytree(dJ_dtheta)
 
-    loss = J(z, z_ref, ode_parameters, nn_parameters)
+    loss = float(J(z, z_ref, ode_parameters, nn_parameters))
 
     if random_shift:
         if np.abs(loss - losses[-1]) < 0.1:
             flat_dJ_dtheta += np.random.normal(0, np.linalg.norm(flat_dJ_dtheta,2), flat_dJ_dtheta.shape)
 
-    if epoch % checkpoint_interval == 0:
-        plot_results(t, z, z_ref, results_path+f'_epoch_{epoch}')
-        z_val = hybrid_euler(z_ref[-1], t_val, ode_parameters, nn_parameters)
-        val_loss = J(z_val, z_ref_val, ode_parameters, nn_parameters)
-        print('#################################################')
-        print(f'Epoch: {epoch}, Valdiation Loss: {val_loss:.7f}')
-        plot_results(t_val, z_val, z_ref_val, results_path+f'_val_epoch_{epoch}')
+    z_val = hybrid_euler(z_ref[-1], t_val, ode_parameters, nn_parameters)
+    val_loss = float(J(z_val, z_ref_val, ode_parameters, nn_parameters))
+
+
 
         # optimizer_args['saved_nn_parameters'] = nn_parameters
 
@@ -501,57 +547,77 @@ def function_wrapper(flat_nn_parameters, optimizer_args):
 
     optimizer_args['epoch'] += 1
     optimizer_args['losses'].append(loss)
+    optimizer_args['losses_val'].append(val_loss)
 
-    if epoch > 0 and loss < best_loss:
+    if epoch > 0 and val_loss < best_loss:
         optimizer_args['saved_nn_parameters'] = nn_parameters
         optimizer_args['best_loss'] = loss
+        optimizer_args['best_loss_val'] = val_loss
         save_args = orbax_utils.save_args_from_target(nn_parameters)
         checkpoint_manager.save(epoch, nn_parameters, save_kwargs={'save_args': save_args})
 
     end = time.time()
 
-    print(f'Epoch: {epoch}, Loss: {loss:.7f}, Time: {end-start:3.3f}')
+    logger.info(f'Epoch: {epoch}, Loss: {loss:.7f}, Time: {end-start:3.3f}')
+    if epoch % checkpoint_interval == 0:
+        plot_results(t, z, z_ref, results_path+f'_epoch_{epoch}')
+        logger.info('#################################################')
+        logger.info(f'Epoch: {epoch}, Valdiation Loss: {val_loss:.7f}')
+        plot_results(t_val, z_val, z_ref_val, results_path+f'_epoch_{epoch}_val')
+        plot_losses(epochs=list(range(len(optimizer_args['losses']))), training_losses=optimizer_args['losses'], validation_losses=optimizer_args['losses_val'], path=residual_path+'_losses')
     return loss, flat_dJ_dtheta/(t.shape[0])
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument('--kappa', type=float, default=1.0, help='oscilation constant of the VdP osc. term')
     parser.add_argument('--mu', type=float, default=8.53, help='damping value of the VdP damping term')
+    parser.add_argument('--mass', type=float, default=1.0, help='mass of the VdP system')
+
     parser.add_argument('--start', type=float, default=0.0, help='Start value of the ODE integration')
     parser.add_argument('--end', type=float, default=20.0, help='End value of the ODE integration')
-    parser.add_argument('--nsteps', type=float, default=60001, help='How many integration steps to perform')
+    parser.add_argument('--n_steps', type=int, default=1001, help='How many integration steps to perform')
 
     parser.add_argument('--layers', type=int, default=1, help='Number of hidden layers')
-    parser.add_argument('--layer_size', type=int, default=25, help='Number of neurons in a hidden layer')
-    parser.add_argument('--lambda_', type=int, default=0, help='lambda in the L2 regularisation term')
+    parser.add_argument('--layer_size', type=int, default=15, help='Number of neurons in a hidden layer')
+    parser.add_argument('--lambda_', type=float, default=0.0, help='lambda in the L2 regularisation term')
 
     parser.add_argument('--aug_state', type=bool, default=False, help='Whether or not to use the augemented state for the ODE dynamics')
     parser.add_argument('--aug_dim', type=int, default=4, help='Number of augment dimensions')
     parser.add_argument('--random_shift', type=bool, default=False, help='Whether or not to shift the gradient of training stagnates')
-    parser.add_argument('--batching', type=bool, default=True, help='whether or not to batch the training data')
+    parser.add_argument('--batching', type=bool, default=False, help='whether or not to batch the training data')
     parser.add_argument('--n_batches', type=int, default=200, help='How many (arbitrary) batches to create')
     parser.add_argument('--batch_size', type=int, default=50, help='batch size (for samples-level batching)')
-    parser.add_argument('--clean_batching', type=bool, default=True, help='Whether or not to split training data into with no overlap')
-    parser.add_argument('--clean_n_batches', type=int, default=200, help='How many clean batches to create')
+    parser.add_argument('--clean_batching', type=bool, default=False, help='Whether or not to split training data into with no overlap')
+    parser.add_argument('--clean_n_batches', type=int, default=20, help='How many clean batches to create')
 
     parser.add_argument('--stimulate', type=bool, default=False, help='Whether or not to use the stimulated dynamics')
     parser.add_argument('--simple_problem', type=bool, default=False, help='Whether or not to use a simple damped oscillator instead of VdP')
 
     parser.add_argument('--method', type=str, default='BFGS', help='Which optimisation method to use')
-    parser.add_argument('--tol', type=float, default=1e-4, help='Tolerance for the optimisation method')
-    parser.add_argument('--opt_steps', type=float, default=100, help='Max Number of steps for the Training')
+    parser.add_argument('--adam_eta', type=float, default=0.1, help='damping value of the VdP damping term')
+    parser.add_argument('--adam_beta1', type=float, default=0.99, help='damping value of the VdP damping term')
+    parser.add_argument('--adam_beta2', type=float, default=0.999, help='damping value of the VdP damping term')
+    parser.add_argument('--adam_eps', type=float, default=1e-8, help='damping value of the VdP damping term')
+
+    parser.add_argument('--tol', type=float, default=1e-6, help='Tolerance for the optimisation method')
+    parser.add_argument('--opt_steps', type=int, default=1000, help='Max Number of steps for the Training')
 
     parser.add_argument('--transfer_learning', type=bool, default=True, help='Whether or not to use residual transfer learning')
-    parser.add_argument('--res_steps', type=float, default=500, help='Number of steps for the Pretraining on the Residuals')
+    parser.add_argument('--res_steps', type=int, default=1000, help='Number of steps for the Pretraining on the Residuals')
 
     parser.add_argument('--build_plot', required=False, default=True, action='store_true',
                         help='specify to build loss and accuracy plot')
-    parser.add_argument('--results_name', required=False, type=str, default='500_res_steps',
+    parser.add_argument('--results_name', required=False, type=str, default='results',
                         help='name under which the results should be saved, like plots and such')
-    parser.add_argument('--checkpoint_interval', required=False, type=int, default=100,
+    parser.add_argument('--checkpoint_interval', required=False, type=int, default=50,
                         help='path to save the resulting plot')
     parser.add_argument('--restore', required=False, type=bool, default=False,
                         help='restore previous parameters')
+
+    # FILE SETUP
+    parser.add_argument('--results_file', type=str, default='doe_results.yaml')
+    parser.add_argument('--results_directory', type=str, default=None)
 
     parser.add_argument('--eval_freq', type=int, default=25, help='evaluate test accuracy every EVAL_FREQ '
                                                                    'samples-level batches')
@@ -559,25 +625,25 @@ if __name__ == '__main__':
 
     path = os.path.abspath(__file__)
     directory = os.path.sep.join(path.split(os.path.sep)[:-1])
-    file_path = get_file_path(path)
-    # results_path = file_path + f'_{args.results_name}'
+    if args.results_directory is None:
+        args.results_directory = create_results_directory(directory=directory, results_directory_name=args.results_name)
+        file_path = get_file_path(path)
 
-    result_directory = os.path.join(directory, args.results_name)
-    if not os.path.exists(result_directory):
-        os.mkdir(result_directory)
-    result_path = os.path.join(result_directory, args.results_name)
+    log_file = os.path.join(args.results_directory, 'GRAD.log')
+    logging.basicConfig(filename=log_file, encoding='utf-8', level=logging.INFO)
+    logger = logging.getLogger('GRAD')
 
-    trajectory_directory = os.path.join(result_directory, 'trajectory')
+    trajectory_directory = os.path.join(args.results_directory, 'trajectory')
     if not os.path.exists(trajectory_directory):
         os.mkdir(trajectory_directory)
     trajectory_path = os.path.join(trajectory_directory, args.results_name)
 
-    residual_directory = os.path.join(result_directory, 'residual')
+    residual_directory = os.path.join(args.results_directory, 'residual')
     if not os.path.exists(residual_directory):
         os.mkdir(residual_directory)
     residual_path = os.path.join(residual_directory, args.results_name)
 
-    checkpoint_directory = os.path.join(result_directory, 'ckpt')
+    checkpoint_directory = os.path.join(args.results_directory, 'ckpt')
     if not os.path.exists(checkpoint_directory):
         os.mkdir(checkpoint_directory)
 
@@ -603,9 +669,9 @@ if __name__ == '__main__':
     else:
         z0 = np.array([1.0, 0.0])
 
-    t_ref = np.linspace(args.start, args.end, args.nsteps)
-    t_val = np.linspace(args.end, (args.end-args.start) * 1.5, int(args.nsteps * 0.5))
-    reference_ode_parameters = np.asarray([1.0, args.mu, 1.0])
+    t_ref = np.linspace(args.start, args.end, args.n_steps)
+    t_val = np.linspace(args.end, (args.end-args.start) * 1.5, int(args.n_steps * 0.5))
+    reference_ode_parameters = np.asarray([args.kappa, args.mu, args.mass])
     z_ref = f_euler(z0, t_ref, reference_ode_parameters)
     z0_val = z_ref[-1]
     z_val = f_euler(z0_val, t_val, reference_ode_parameters)
@@ -633,6 +699,9 @@ if __name__ == '__main__':
                     'unravel_function' : unravel_pytree,
                     'epoch' : epoch,
                     'losses' : [],
+                    'losses_res': [],
+                    'losses_val': [],
+                    'losses_val_res': [],
                     'batching' : args.batching,
                     'n_batches': args.n_batches,
                     'batch_size': args.batch_size,
@@ -643,42 +712,93 @@ if __name__ == '__main__':
                     'results_path' : residual_path,
                     'saved_nn_parameters' : nn_parameters,
                     'best_loss' : np.inf,
+                    'best_loss_val': np.inf,
                     'checkpoint_manager' : checkpoint_manager,
-                    'lambda' : args.lambda_}
+                    'lambda' : args.lambda_,
+                    'logger': logger}
 
+    if args.clean_batching:
+        z0s, targets, ts = create_clean_mini_batch(args.clean_n_batches, z_ref, t_ref)
+        optimizer_args['z0s'] = z0s
+        optimizer_args['targets'] = targets
+        optimizer_args['ts'] = ts
+    else:
+        optimizer_args['z0s'] = None
+        optimizer_args['targets'] = None
+        optimizer_args['ts'] = None
 
     # Train on Residuals
     ####################################################################################
     # Optimisers: CG, BFGS, Newton-CG, L-BFGS-B, TNC, SLSQP, dogleg, trust-ncg, trust-krylov, trust-exact and trust-constr
+
+    results_dict = {}
+
     if args.transfer_learning:
+        start = time.time()
         try:
-            residual_result = minimize(residual_wrapper, flat_nn_parameters, method=args.method, jac=True, args=optimizer_args, options={'maxiter':args.res_steps})
+
+            if args.method == 'Adam':
+                Adam = AdamOptim(eta=args.adam_eta, beta1=args.adam_beta1, beta2=args.adam_beta2, epsilon=args.adam_eps)
+                for i in range(args.res_steps):
+                    loss, grad = residual_wrapper(flat_nn_parameters=flat_nn_parameters, optimizer_args=optimizer_args)
+                    flat_nn_parameters = Adam.update(i+1, flat_nn_parameters, grad)
+            else:
+                residual_result = minimize(residual_wrapper, flat_nn_parameters, method=args.method, jac=True, args=optimizer_args, options={'maxiter':args.res_steps})
         except (KeyboardInterrupt, UserWarning):
             pass
+        experiment_time = time.time() - start
         nn_parameters = optimizer_args['saved_nn_parameters']
         best_loss = optimizer_args['best_loss']
-        print(f'Best Loss in Residual Training: {best_loss}')
+        logger.info(f'Best Loss in Residual Training: {best_loss}')
         flat_nn_parameters, _ = flatten_util.ravel_pytree(nn_parameters)
         # Plot the result of the training on residuals
         z = hybrid_euler(z0, t_ref, reference_ode_parameters, nn_parameters)
-        path = os.path.abspath(__file__)
-        plot_path = get_file_path(path)
         plot_results(t_ref, z, z_ref, residual_path+'_best')
+        plot_losses(epochs=list(range(len(optimizer_args['losses']))), training_losses=optimizer_args['losses'], validation_losses=optimizer_args['losses_val'], path=residual_path+'_losses')
+        plot_losses(epochs=list(range(len(optimizer_args['losses_res']))), training_losses=optimizer_args['losses_res'], path=residual_path+'_losses_res')
+
+        results_dict['losses_train_res'] =  list(optimizer_args['losses_res'])
+        results_dict['time_res'] = experiment_time
 
     # Train on Trajectory
     ####################################################################################
     optimizer_args['results_path'] = trajectory_path
+    start = time.time()
     try:
-        res = minimize(function_wrapper, flat_nn_parameters, method='BFGS', jac=True, args=optimizer_args, tol=args.tol)
-        print(res)
+        if args.method == 'Adam':
+            Adam = AdamOptim(eta=args.adam_eta*10, beta1=args.adam_beta1, beta2=args.adam_beta2, epsilon=args.adam_eps)
+            for i in range(args.opt_steps):
+                loss, grad = function_wrapper(flat_nn_parameters=flat_nn_parameters, optimizer_args=optimizer_args)
+                flat_nn_parameters = Adam.update(i+1, flat_nn_parameters, grad)
+        else:
+            res = minimize(function_wrapper, flat_nn_parameters, method=args.method, jac=True, args=optimizer_args, tol=args.tol)
     except (KeyboardInterrupt, UserWarning):
         pass
+
+    experiment_time = time.time() - start
+
+    results_dict['losses_train_traj'] =  list(optimizer_args['losses'])
+    results_dict['losses_train_traj_val'] = list(optimizer_args['losses_val'])
+    results_dict['time_traj'] = experiment_time
+    logger.info(f'Dumping results to {args.results_file}.')
+    with open(args.results_file, 'w') as file:
+        yaml.dump(results_dict, file)
+
     nn_parameters = optimizer_args['saved_nn_parameters']
+    flat_nn_parameters, _ = flatten_util.ravel_pytree(nn_parameters)
+    dumpable_params = []
+    for param in flat_nn_parameters:
+        dumpable_params.append(float(param))
+    with open(args.results_file, 'a') as file:
+        yaml.dump({'flat_parameters': dumpable_params}, file)
+
     best_loss = optimizer_args['best_loss']
-    print(f'Best Loss in Training: {best_loss}')
+    logger.info(f'Best Loss in Training: {best_loss}')
 
     z_training = hybrid_euler(z0, t_ref, reference_ode_parameters, nn_parameters)
     z_validation = hybrid_euler(z0_val, t_val, reference_ode_parameters, nn_parameters)
 
     plot_results(t_ref, z_training, z_ref, trajectory_path+'_best')
     plot_results(t_val, z_validation, z_val, trajectory_path+'_best_val')
+    plot_losses(epochs=range(len(optimizer_args['losses'])), training_losses=optimizer_args['losses'], validation_losses=optimizer_args['losses_val'], path=trajectory_path)
+
