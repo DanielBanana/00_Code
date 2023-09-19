@@ -44,7 +44,7 @@ if __name__ == '__main__':
     parser.add_argument('--script_file', type=str, default='11_CBO_single_experiment.py', help='The script for the design of experiments')
     parser.add_argument('--argument_file', type=str, default='doe_arguments.yaml',
                         help='The yaml file which contains the DoE arguments for the script')
-    parser.add_argument('--results_directory_name', type=str, default='DoE_VdP_Particles (save)',
+    parser.add_argument('--results_directory_name', type=str, default='TEST',
                         help='The yaml file which contains the DoE arguments for the script')
     parser.add_argument('--results_file', type=str, default='doe_results.yaml',
                         help='The yaml file which contains the DoE arguments for the script')
@@ -156,14 +156,19 @@ if __name__ == '__main__':
         # UPDATE PLOTS
         for result_parameter, v in averaged_results[0].items():
             if type(v) is list or type(v) is tuple:
-                fig, ax = plt.subplots(1,1)
+                fig, (ax1, ax2) = plt.subplots(1,2)
                 for exp_index, averaged_result in enumerate(averaged_results):
                     value = averaged_result[result_parameter]
                     x = range(len(value))
-                    ax.plot(x, value, label= f'Exp.: {exp_index}')
-                    ax.legend()
-                    ax.set_ylabel(result_parameter)
-                    ax.set_title(result_parameter + f' - ({run} runs)')
+                    ax1.plot(x, value, label= f'Exp.: {exp_index}')
+                    ax1.legend()
+                    ax1.set_ylabel(result_parameter)
+                    ax1.set_title(result_parameter + f' - ({run} runs)')
+                    ax2.plot(x, value, label= f'Exp.: {exp_index}')
+                    ax2.legend()
+                    ax2.set_ylabel(result_parameter)
+                    ax2.set_title(result_parameter + f' - ({run} runs)')
+                    ax2.set_yscale('log')
                 plt.savefig(os.path.join(results_directory, f'{result_parameter}.png'))
                 plt.close()
             elif type(v) is np.int64 or type(v) is np.float64 or type(v) is int or type(v) is float:
