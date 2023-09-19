@@ -1,0 +1,470 @@
+
+{'models': 'MNIST_726x10', 'epochs': 15}
+Trainable Parameters: 7850
+Train Epoch: 0 	Loss: 1.413548, Forward Time: 0.263, Backward Time: 0.144
+Test set: Average Loss: 1.2198, Accuracy: (65%)
+
+Train Epoch: 1 	Loss: 1.214537, Forward Time: 0.266, Backward Time: 0.141
+Test set: Average Loss: 1.1323, Accuracy: (70%)
+
+Train Epoch: 2 	Loss: 1.168769, Forward Time: 0.264, Backward Time: 0.146
+Test set: Average Loss: 1.1126, Accuracy: (71%)
+
+Train Epoch: 3 	Loss: 1.135691, Forward Time: 0.265, Backward Time: 0.144
+Test set: Average Loss: 1.0799, Accuracy: (72%)
+
+Train Epoch: 4 	Loss: 1.111698, Forward Time: 0.270, Backward Time: 0.145
+Test set: Average Loss: 1.0664, Accuracy: (72%)
+
+Train Epoch: 5 	Loss: 1.107278, Forward Time: 0.267, Backward Time: 0.148
+Test set: Average Loss: 1.0656, Accuracy: (71%)
+
+Train Epoch: 6 	Loss: 1.100921, Forward Time: 0.268, Backward Time: 0.152
+Test set: Average Loss: 1.0728, Accuracy: (73%)
+
+Train Epoch: 7 	Loss: 1.097056, Forward Time: 0.268, Backward Time: 0.145
+Test set: Average Loss: 1.0577, Accuracy: (73%)
+
+Train Epoch: 8 	Loss: 1.092424, Forward Time: 0.268, Backward Time: 0.147
+Test set: Average Loss: 1.0526, Accuracy: (73%)
+
+Train Epoch: 9 	Loss: 1.092054, Forward Time: 0.281, Backward Time: 0.142
+Test set: Average Loss: 1.0500, Accuracy: (73%)
+
+Train Epoch: 10 	Loss: 1.089364, Forward Time: 0.267, Backward Time: 0.143
+Test set: Average Loss: 1.0626, Accuracy: (73%)
+
+Train Epoch: 11 	Loss: 1.088371, Forward Time: 0.274, Backward Time: 0.157
+Test set: Average Loss: 1.0428, Accuracy: (73%)
+
+Train Epoch: 12 	Loss: 1.087311, Forward Time: 0.283, Backward Time: 0.143
+Test set: Average Loss: 1.0482, Accuracy: (72%)
+
+Train Epoch: 13 	Loss: 1.085182, Forward Time: 0.270, Backward Time: 0.157
+Test set: Average Loss: 1.0383, Accuracy: (72%)
+
+Train Epoch: 14 	Loss: 1.087287, Forward Time: 0.275, Backward Time: 0.148
+Test set: Average Loss: 1.0421, Accuracy: (72%)
+
+{'models': 'MNIST_726x10', 'epochs': 15}
+Trainable Parameters: 7850
+Train Epoch: 0 	Loss: 1.019947, Forward Time: 0.246, Backward Time: 0.137
+Test set: Average Loss: 0.7549, Accuracy: (87%)
+
+Train Epoch: 1 	Loss: 0.750100, Forward Time: 0.247, Backward Time: 0.132
+Test set: Average Loss: 0.6360, Accuracy: (90%)
+
+Train Epoch: 2 	Loss: 0.702052, Forward Time: 0.241, Backward Time: 0.130
+Test set: Average Loss: 0.6259, Accuracy: (90%)
+
+Train Epoch: 3 	Loss: 0.674635, Forward Time: 0.241, Backward Time: 0.130
+Test set: Average Loss: 0.5913, Accuracy: (91%)
+
+Train Epoch: 4 	Loss: 0.652407, Forward Time: 0.250, Backward Time: 0.134
+Test set: Average Loss: 0.5834, Accuracy: (91%)
+
+Train Epoch: 5 	Loss: 0.641716, Forward Time: 0.250, Backward Time: 0.135
+Test set: Average Loss: 0.5667, Accuracy: (91%)
+
+Train Epoch: 6 	Loss: 0.629003, Forward Time: 0.254, Backward Time: 0.135
+Test set: Average Loss: 0.5748, Accuracy: (92%)
+
+Train Epoch: 7 	Loss: 0.616151, Forward Time: 0.261, Backward Time: 0.141
+Test set: Average Loss: 0.5510, Accuracy: (92%)
+
+Train Epoch: 8 	Loss: 0.608139, Forward Time: 0.255, Backward Time: 0.140
+Test set: Average Loss: 0.5633, Accuracy: (92%)
+
+Train Epoch: 9 	Loss: 0.603594, Forward Time: 0.250, Backward Time: 0.133
+Test set: Average Loss: 0.5494, Accuracy: (92%)
+
+Train Epoch: 10 	Loss: 0.603215, Forward Time: 0.253, Backward Time: 0.136
+Test set: Average Loss: 0.5337, Accuracy: (92%)
+
+Train Epoch: 11 	Loss: 0.601741, Forward Time: 0.239, Backward Time: 0.127
+Test set: Average Loss: 0.5447, Accuracy: (92%)
+
+Train Epoch: 12 	Loss: 0.596965, Forward Time: 0.247, Backward Time: 0.131
+Test set: Average Loss: 0.5388, Accuracy: (92%)
+
+Train Epoch: 13 	Loss: 0.595028, Forward Time: 0.247, Backward Time: 0.131
+Test set: Average Loss: 0.5442, Accuracy: (92%)
+
+Train Epoch: 14 	Loss: 0.595947, Forward Time: 0.251, Backward Time: 0.134
+Test set: Average Loss: 0.5430, Accuracy: (92%)
+
+{'models': 'MNIST_726x10', 'epochs': 15}
+Trainable Parameters: 7850
+Train Epoch: 0 	Loss: 0.923422, Forward Time: 0.237, Backward Time: 0.127
+Test set: Average Loss: 0.6486, Accuracy: (89%)
+
+Train Epoch: 1 	Loss: 0.694731, Forward Time: 0.283, Backward Time: 0.156
+Test set: Average Loss: 0.5993, Accuracy: (91%)
+
+Train Epoch: 2 	Loss: 0.653186, Forward Time: 0.264, Backward Time: 0.143
+Test set: Average Loss: 0.5860, Accuracy: (91%)
+
+Train Epoch: 3 	Loss: 0.637483, Forward Time: 0.265, Backward Time: 0.145
+Test set: Average Loss: 0.5761, Accuracy: (91%)
+
+Train Epoch: 4 	Loss: 0.628901, Forward Time: 0.262, Backward Time: 0.145
+Test set: Average Loss: 0.5963, Accuracy: (92%)
+
+Train Epoch: 5 	Loss: 0.624270, Forward Time: 0.279, Backward Time: 0.155
+Test set: Average Loss: 0.5716, Accuracy: (92%)
+
+Train Epoch: 6 	Loss: 0.618246, Forward Time: 0.269, Backward Time: 0.144
+Test set: Average Loss: 0.5736, Accuracy: (92%)
+
+Train Epoch: 7 	Loss: 0.617451, Forward Time: 0.288, Backward Time: 0.148
+Test set: Average Loss: 0.5528, Accuracy: (92%)
+
+Train Epoch: 8 	Loss: 0.614351, Forward Time: 0.285, Backward Time: 0.153
+Test set: Average Loss: 0.5578, Accuracy: (92%)
+
+Train Epoch: 9 	Loss: 0.612298, Forward Time: 0.273, Backward Time: 0.153
+Test set: Average Loss: 0.5559, Accuracy: (92%)
+
+Train Epoch: 10 	Loss: 0.607679, Forward Time: 0.266, Backward Time: 0.143
+Test set: Average Loss: 0.5546, Accuracy: (92%)
+
+Train Epoch: 11 	Loss: 0.606560, Forward Time: 0.266, Backward Time: 0.141
+Test set: Average Loss: 0.5570, Accuracy: (92%)
+
+Train Epoch: 12 	Loss: 0.608020, Forward Time: 0.269, Backward Time: 0.161
+Test set: Average Loss: 0.5592, Accuracy: (92%)
+
+Train Epoch: 13 	Loss: 0.604634, Forward Time: 0.273, Backward Time: 0.142
+Test set: Average Loss: 0.5529, Accuracy: (92%)
+
+Train Epoch: 14 	Loss: 0.595794, Forward Time: 0.271, Backward Time: 0.146
+Test set: Average Loss: 0.5371, Accuracy: (92%)
+
+{'models': 'MNIST_726x10', 'epochs': 15}
+Trainable Parameters: 7850
+Train Epoch: 0 	Loss: 1.279743, Forward Time: 0.268, Backward Time: 0.150
+Test set: Average Loss: 1.4009, Accuracy: (76%)
+
+Train Epoch: 1 	Loss: 0.971217, Forward Time: 0.269, Backward Time: 0.154
+Test set: Average Loss: 0.9163, Accuracy: (79%)
+
+Train Epoch: 2 	Loss: 0.943604, Forward Time: 0.271, Backward Time: 0.143
+Test set: Average Loss: 0.8855, Accuracy: (79%)
+
+Train Epoch: 3 	Loss: 0.933293, Forward Time: 0.287, Backward Time: 0.156
+Test set: Average Loss: 0.8892, Accuracy: (81%)
+
+Train Epoch: 4 	Loss: 0.917900, Forward Time: 0.294, Backward Time: 0.156
+Test set: Average Loss: 0.8671, Accuracy: (81%)
+
+Train Epoch: 5 	Loss: 0.909854, Forward Time: 0.279, Backward Time: 0.162
+Test set: Average Loss: 0.8434, Accuracy: (81%)
+
+Train Epoch: 6 	Loss: 0.908138, Forward Time: 0.286, Backward Time: 0.154
+Test set: Average Loss: 0.8679, Accuracy: (81%)
+
+Train Epoch: 7 	Loss: 0.906174, Forward Time: 0.318, Backward Time: 0.180
+Test set: Average Loss: 0.8657, Accuracy: (82%)
+
+Train Epoch: 8 	Loss: 0.903844, Forward Time: 0.300, Backward Time: 0.164
+Test set: Average Loss: 0.8650, Accuracy: (82%)
+
+Train Epoch: 9 	Loss: 0.900751, Forward Time: 0.307, Backward Time: 0.165
+Test set: Average Loss: 0.8670, Accuracy: (81%)
+
+Train Epoch: 10 	Loss: 0.898898, Forward Time: 0.309, Backward Time: 0.170
+Test set: Average Loss: 0.8542, Accuracy: (82%)
+
+Train Epoch: 11 	Loss: 0.898846, Forward Time: 0.285, Backward Time: 0.158
+Test set: Average Loss: 0.8680, Accuracy: (82%)
+
+Train Epoch: 12 	Loss: 0.897638, Forward Time: 0.294, Backward Time: 0.158
+Test set: Average Loss: 0.8591, Accuracy: (82%)
+
+Train Epoch: 13 	Loss: 0.894869, Forward Time: 0.305, Backward Time: 0.169
+Test set: Average Loss: 0.8491, Accuracy: (81%)
+
+Train Epoch: 14 	Loss: 0.895606, Forward Time: 0.318, Backward Time: 0.207
+Test set: Average Loss: 0.8486, Accuracy: (82%)
+
+{'models': 'MNIST_726x10', 'epochs': 15}
+Trainable Parameters: 7850
+Train Epoch: 0 	Loss: 1.503599, Forward Time: 0.304, Backward Time: 0.172
+Test set: Average Loss: 1.2847, Accuracy: (61%)
+
+Train Epoch: 1 	Loss: 1.311556, Forward Time: 0.290, Backward Time: 0.157
+Test set: Average Loss: 1.2641, Accuracy: (60%)
+
+Train Epoch: 2 	Loss: 1.291592, Forward Time: 0.310, Backward Time: 0.170
+Test set: Average Loss: 1.2617, Accuracy: (63%)
+
+Train Epoch: 3 	Loss: 1.275509, Forward Time: 0.310, Backward Time: 0.166
+Test set: Average Loss: 2.7081, Accuracy: (63%)
+
+Train Epoch: 4 	Loss: 1.241404, Forward Time: 0.305, Backward Time: 0.161
+Test set: Average Loss: 1.2518, Accuracy: (65%)
+
+Train Epoch: 5 	Loss: 1.174573, Forward Time: 0.289, Backward Time: 0.159
+Test set: Average Loss: 1.0398, Accuracy: (72%)
+
+Train Epoch: 6 	Loss: 1.062385, Forward Time: 0.313, Backward Time: 0.169
+Test set: Average Loss: 1.0416, Accuracy: (74%)
+
+Train Epoch: 7 	Loss: 1.055056, Forward Time: 0.326, Backward Time: 0.179
+Test set: Average Loss: 1.0262, Accuracy: (75%)
+
+Train Epoch: 8 	Loss: 1.052259, Forward Time: 0.303, Backward Time: 0.173
+Test set: Average Loss: 0.9962, Accuracy: (74%)
+
+Train Epoch: 9 	Loss: 1.051041, Forward Time: 0.301, Backward Time: 0.163
+Test set: Average Loss: 1.0037, Accuracy: (74%)
+
+Train Epoch: 10 	Loss: 1.048708, Forward Time: 0.305, Backward Time: 0.161
+Test set: Average Loss: 1.0156, Accuracy: (75%)
+
+Train Epoch: 11 	Loss: 1.046741, Forward Time: 0.294, Backward Time: 0.166
+Test set: Average Loss: 0.9896, Accuracy: (75%)
+
+Train Epoch: 12 	Loss: 1.045743, Forward Time: 0.305, Backward Time: 0.163
+Test set: Average Loss: 0.9909, Accuracy: (74%)
+
+Train Epoch: 13 	Loss: 1.045370, Forward Time: 0.297, Backward Time: 0.174
+Test set: Average Loss: 0.9931, Accuracy: (73%)
+
+Train Epoch: 14 	Loss: 1.044368, Forward Time: 0.291, Backward Time: 0.168
+Test set: Average Loss: 1.0074, Accuracy: (73%)
+
+{'models': 'MNIST_726x10', 'epochs': 15}
+Trainable Parameters: 7850
+Train Epoch: 0 	Loss: 1.156450, Forward Time: 0.355, Backward Time: 0.190
+Test set: Average Loss: 0.8942, Accuracy: (81%)
+
+Train Epoch: 1 	Loss: 0.797275, Forward Time: 0.327, Backward Time: 0.176
+Test set: Average Loss: 0.6398, Accuracy: (90%)
+
+Train Epoch: 2 	Loss: 0.665557, Forward Time: 0.278, Backward Time: 0.155
+Test set: Average Loss: 0.5970, Accuracy: (91%)
+
+Train Epoch: 3 	Loss: 0.644453, Forward Time: 0.355, Backward Time: 0.185
+Test set: Average Loss: 0.5884, Accuracy: (92%)
+
+Train Epoch: 4 	Loss: 0.633524, Forward Time: 0.292, Backward Time: 0.162
+Test set: Average Loss: 0.5512, Accuracy: (92%)
+
+Train Epoch: 5 	Loss: 0.626565, Forward Time: 0.275, Backward Time: 0.145
+Test set: Average Loss: 0.5658, Accuracy: (92%)
+
+Train Epoch: 6 	Loss: 0.623906, Forward Time: 0.322, Backward Time: 0.168
+Test set: Average Loss: 0.5560, Accuracy: (92%)
+
+Train Epoch: 7 	Loss: 0.619605, Forward Time: 0.331, Backward Time: 0.181
+Test set: Average Loss: 0.5666, Accuracy: (92%)
+
+Train Epoch: 8 	Loss: 0.614836, Forward Time: 0.310, Backward Time: 0.165
+Test set: Average Loss: 0.5307, Accuracy: (92%)
+
+Train Epoch: 9 	Loss: 0.602221, Forward Time: 0.312, Backward Time: 0.171
+Test set: Average Loss: 0.5564, Accuracy: (92%)
+
+Train Epoch: 10 	Loss: 0.603295, Forward Time: 0.331, Backward Time: 0.183
+Test set: Average Loss: 0.5475, Accuracy: (92%)
+
+Train Epoch: 11 	Loss: 0.598264, Forward Time: 0.306, Backward Time: 0.167
+Test set: Average Loss: 0.5320, Accuracy: (92%)
+
+Train Epoch: 12 	Loss: 0.596593, Forward Time: 0.296, Backward Time: 0.184
+Test set: Average Loss: 0.5394, Accuracy: (92%)
+
+Train Epoch: 13 	Loss: 0.595034, Forward Time: 0.348, Backward Time: 0.190
+Test set: Average Loss: 0.5491, Accuracy: (92%)
+
+Train Epoch: 14 	Loss: 0.593340, Forward Time: 0.312, Backward Time: 0.171
+Test set: Average Loss: 0.5364, Accuracy: (92%)
+
+{'models': 'MNIST_726x10', 'epochs': 15}
+Trainable Parameters: 7850
+Train Epoch: 0 	Loss: 1.408174, Forward Time: 0.244, Backward Time: 0.130
+Test set: Average Loss: 1.2510, Accuracy: (67%)
+
+Train Epoch: 1 	Loss: 1.139702, Forward Time: 0.250, Backward Time: 0.133
+Test set: Average Loss: 1.7322, Accuracy: (70%)
+
+Train Epoch: 2 	Loss: 1.103385, Forward Time: 0.261, Backward Time: 0.149
+Test set: Average Loss: 1.0473, Accuracy: (71%)
+
+Train Epoch: 3 	Loss: 1.092715, Forward Time: 0.251, Backward Time: 0.134
+Test set: Average Loss: 1.0427, Accuracy: (71%)
+
+Train Epoch: 4 	Loss: 1.085730, Forward Time: 0.281, Backward Time: 0.151
+Test set: Average Loss: 1.2775, Accuracy: (71%)
+
+Train Epoch: 5 	Loss: 1.082068, Forward Time: 0.266, Backward Time: 0.142
+Test set: Average Loss: 1.0425, Accuracy: (71%)
+
+Train Epoch: 6 	Loss: 1.079531, Forward Time: 0.278, Backward Time: 0.150
+Test set: Average Loss: 17.8417, Accuracy: (71%)
+
+Train Epoch: 7 	Loss: 1.075834, Forward Time: 0.282, Backward Time: 0.154
+Test set: Average Loss: 1.0819, Accuracy: (72%)
+
+Train Epoch: 8 	Loss: 1.074975, Forward Time: 0.258, Backward Time: 0.137
+Test set: Average Loss: 5.1764, Accuracy: (72%)
+
+Train Epoch: 9 	Loss: 1.071780, Forward Time: 0.250, Backward Time: 0.134
+Test set: Average Loss: 14.8869, Accuracy: (71%)
+
+Train Epoch: 10 	Loss: 1.068223, Forward Time: 0.251, Backward Time: 0.134
+Test set: Average Loss: 1.0521, Accuracy: (71%)
+
+Train Epoch: 11 	Loss: 1.067584, Forward Time: 0.252, Backward Time: 0.134
+Test set: Average Loss: 1.1199, Accuracy: (72%)
+
+Train Epoch: 12 	Loss: 1.067510, Forward Time: 0.270, Backward Time: 0.145
+Test set: Average Loss: 14.8975, Accuracy: (71%)
+
+Train Epoch: 13 	Loss: 1.064729, Forward Time: 0.297, Backward Time: 0.160
+Test set: Average Loss: 1.4385, Accuracy: (71%)
+
+Train Epoch: 14 	Loss: 1.064742, Forward Time: 0.259, Backward Time: 0.136
+Test set: Average Loss: 14.9056, Accuracy: (72%)
+
+{'models': 'MNIST_726x10', 'epochs': 15}
+Trainable Parameters: 7850
+Train Epoch: 0 	Loss: 0.915570, Forward Time: 0.282, Backward Time: 0.149
+Test set: Average Loss: 0.6514, Accuracy: (89%)
+
+Train Epoch: 1 	Loss: 0.694504, Forward Time: 0.300, Backward Time: 0.161
+Test set: Average Loss: 0.6185, Accuracy: (90%)
+
+Train Epoch: 2 	Loss: 0.670088, Forward Time: 0.260, Backward Time: 0.139
+Test set: Average Loss: 0.6156, Accuracy: (91%)
+
+Train Epoch: 3 	Loss: 0.657699, Forward Time: 0.255, Backward Time: 0.137
+Test set: Average Loss: 0.5968, Accuracy: (91%)
+
+Train Epoch: 4 	Loss: 0.645609, Forward Time: 0.272, Backward Time: 0.144
+Test set: Average Loss: 0.5790, Accuracy: (91%)
+
+Train Epoch: 5 	Loss: 0.630664, Forward Time: 0.284, Backward Time: 0.147
+Test set: Average Loss: 0.5649, Accuracy: (92%)
+
+Train Epoch: 6 	Loss: 0.613467, Forward Time: 0.315, Backward Time: 0.169
+Test set: Average Loss: 0.5450, Accuracy: (92%)
+
+Train Epoch: 7 	Loss: 0.608592, Forward Time: 0.275, Backward Time: 0.147
+Test set: Average Loss: 0.5393, Accuracy: (92%)
+
+Train Epoch: 8 	Loss: 0.605959, Forward Time: 0.267, Backward Time: 0.145
+Test set: Average Loss: 0.5664, Accuracy: (92%)
+
+Train Epoch: 9 	Loss: 0.601848, Forward Time: 0.262, Backward Time: 0.140
+Test set: Average Loss: 0.5559, Accuracy: (92%)
+
+Train Epoch: 10 	Loss: 0.599057, Forward Time: 0.277, Backward Time: 0.146
+Test set: Average Loss: 0.5360, Accuracy: (92%)
+
+Train Epoch: 11 	Loss: 0.597423, Forward Time: 0.268, Backward Time: 0.144
+Test set: Average Loss: 0.5413, Accuracy: (92%)
+
+Train Epoch: 12 	Loss: 0.596969, Forward Time: 0.265, Backward Time: 0.141
+Test set: Average Loss: 0.5432, Accuracy: (92%)
+
+Train Epoch: 13 	Loss: 0.594496, Forward Time: 0.301, Backward Time: 0.161
+Test set: Average Loss: 0.5385, Accuracy: (92%)
+
+Train Epoch: 14 	Loss: 0.595187, Forward Time: 0.274, Backward Time: 0.148
+Test set: Average Loss: 0.5356, Accuracy: (92%)
+
+{'models': 'MNIST_726x10', 'epochs': 15}
+Trainable Parameters: 7850
+Train Epoch: 0 	Loss: 1.070028, Forward Time: 0.226, Backward Time: 0.122
+Test set: Average Loss: 1.5410, Accuracy: (83%)
+
+Train Epoch: 1 	Loss: 0.836866, Forward Time: 0.234, Backward Time: 0.126
+Test set: Average Loss: 0.8558, Accuracy: (86%)
+
+Train Epoch: 2 	Loss: 0.797832, Forward Time: 0.235, Backward Time: 0.126
+Test set: Average Loss: 0.7446, Accuracy: (87%)
+
+Train Epoch: 3 	Loss: 0.782969, Forward Time: 0.234, Backward Time: 0.126
+Test set: Average Loss: 0.8634, Accuracy: (87%)
+
+Train Epoch: 4 	Loss: 0.771421, Forward Time: 0.234, Backward Time: 0.126
+Test set: Average Loss: 0.7317, Accuracy: (88%)
+
+Train Epoch: 5 	Loss: 0.757908, Forward Time: 0.231, Backward Time: 0.125
+Test set: Average Loss: 0.7062, Accuracy: (87%)
+
+Train Epoch: 6 	Loss: 0.751584, Forward Time: 0.227, Backward Time: 0.122
+Test set: Average Loss: 0.7671, Accuracy: (89%)
+
+Train Epoch: 7 	Loss: 0.746862, Forward Time: 0.226, Backward Time: 0.122
+Test set: Average Loss: 0.6803, Accuracy: (89%)
+
+Train Epoch: 8 	Loss: 0.744514, Forward Time: 0.227, Backward Time: 0.123
+Test set: Average Loss: 1.0436, Accuracy: (89%)
+
+Train Epoch: 9 	Loss: 0.742191, Forward Time: 0.226, Backward Time: 0.121
+Test set: Average Loss: 0.7019, Accuracy: (89%)
+
+Train Epoch: 10 	Loss: 0.739270, Forward Time: 0.231, Backward Time: 0.126
+Test set: Average Loss: 0.7858, Accuracy: (89%)
+
+Train Epoch: 11 	Loss: 0.737663, Forward Time: 0.225, Backward Time: 0.122
+Test set: Average Loss: 2.1613, Accuracy: (89%)
+
+Train Epoch: 12 	Loss: 0.738735, Forward Time: 0.225, Backward Time: 0.121
+Test set: Average Loss: 0.7194, Accuracy: (89%)
+
+Train Epoch: 13 	Loss: 0.735831, Forward Time: 0.226, Backward Time: 0.122
+Test set: Average Loss: 0.7001, Accuracy: (89%)
+
+Train Epoch: 14 	Loss: 0.735592, Forward Time: 0.230, Backward Time: 0.123
+Test set: Average Loss: 1.1512, Accuracy: (89%)
+
+{'models': 'MNIST_726x10', 'epochs': 15}
+Trainable Parameters: 7850
+Train Epoch: 0 	Loss: 1.167718, Forward Time: 0.227, Backward Time: 0.123
+Test set: Average Loss: 1.1792, Accuracy: (76%)
+
+Train Epoch: 1 	Loss: 0.981685, Forward Time: 0.231, Backward Time: 0.125
+Test set: Average Loss: 0.9456, Accuracy: (77%)
+
+Train Epoch: 2 	Loss: 0.947422, Forward Time: 0.229, Backward Time: 0.123
+Test set: Average Loss: 0.8863, Accuracy: (78%)
+
+Train Epoch: 3 	Loss: 0.935518, Forward Time: 0.231, Backward Time: 0.127
+Test set: Average Loss: 0.8994, Accuracy: (80%)
+
+Train Epoch: 4 	Loss: 0.929525, Forward Time: 0.229, Backward Time: 0.125
+Test set: Average Loss: 0.8861, Accuracy: (79%)
+
+Train Epoch: 5 	Loss: 0.924177, Forward Time: 0.229, Backward Time: 0.125
+Test set: Average Loss: 0.8859, Accuracy: (80%)
+
+Train Epoch: 6 	Loss: 0.909907, Forward Time: 0.230, Backward Time: 0.126
+Test set: Average Loss: 1.0961, Accuracy: (80%)
+
+Train Epoch: 7 	Loss: 0.905344, Forward Time: 0.231, Backward Time: 0.125
+Test set: Average Loss: 0.8593, Accuracy: (81%)
+
+Train Epoch: 8 	Loss: 0.903659, Forward Time: 0.227, Backward Time: 0.124
+Test set: Average Loss: 0.8648, Accuracy: (81%)
+
+Train Epoch: 9 	Loss: 0.899196, Forward Time: 0.229, Backward Time: 0.124
+Test set: Average Loss: 0.8705, Accuracy: (81%)
+
+Train Epoch: 10 	Loss: 0.899180, Forward Time: 0.230, Backward Time: 0.125
+Test set: Average Loss: 0.8466, Accuracy: (81%)
+
+Train Epoch: 11 	Loss: 0.895992, Forward Time: 0.229, Backward Time: 0.124
+Test set: Average Loss: 0.8476, Accuracy: (81%)
+
+Train Epoch: 12 	Loss: 0.896515, Forward Time: 0.229, Backward Time: 0.123
+Test set: Average Loss: 0.8686, Accuracy: (82%)
+
+Train Epoch: 13 	Loss: 0.895650, Forward Time: 0.228, Backward Time: 0.124
+Test set: Average Loss: 0.8562, Accuracy: (81%)
+
+Train Epoch: 14 	Loss: 0.895882, Forward Time: 0.229, Backward Time: 0.124
+Test set: Average Loss: 0.8544, Accuracy: (82%)
