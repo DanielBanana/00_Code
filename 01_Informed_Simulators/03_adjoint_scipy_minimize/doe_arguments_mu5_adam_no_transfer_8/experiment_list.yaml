@@ -1,0 +1,23 @@
+Experiment 0:
+  adam_beta1: 0.99
+  adam_beta2: 0.999
+  adam_eps: 1.0e-08
+  adam_eta: 0.001
+  batch_size: 50
+  batching: true
+  clean_batching: true
+  clean_n_batches: 20
+  end: 20.0
+  kappa: 1.0
+  lambda_: 0
+  layer_size: 15
+  layers: 1
+  mass: 1.0
+  method: Adam
+  mu: 5
+  n_batches: 200
+  n_steps: 1001
+  opt_steps: 5000
+  res_steps: 1000
+  start: 0.0
+  stimulate: true
