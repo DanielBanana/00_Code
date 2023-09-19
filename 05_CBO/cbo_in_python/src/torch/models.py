@@ -88,6 +88,48 @@ class PARA_7x7(nn.Module):
     def forward(self, x):
         return self.model(x)
 
+class PARA_5(nn.Module):
+    def __init__(self):
+        super(PARA_5, self).__init__()
+
+        self.model = nn.Sequential(
+            nn.Linear(1, 5),
+            nn.ReLU(),
+            nn.BatchNorm1d(5, affine=False),
+            nn.Linear(5, 1),
+        )
+
+    def forward(self, x):
+        return self.model(x)
+
+class PARA_10(nn.Module):
+    def __init__(self):
+        super(PARA_10, self).__init__()
+
+        self.model = nn.Sequential(
+            nn.Linear(1, 10),
+            nn.ReLU(),
+            nn.BatchNorm1d(10, affine=False),
+            nn.Linear(10, 1),
+        )
+
+    def forward(self, x):
+        return self.model(x)
+
+class PARA_15(nn.Module):
+    def __init__(self):
+        super(PARA_15, self).__init__()
+
+        self.model = nn.Sequential(
+            nn.Linear(1, 15),
+            nn.ReLU(),
+            nn.BatchNorm1d(15, affine=False),
+            nn.Linear(15, 1),
+        )
+
+    def forward(self, x):
+        return self.model(x)
+
 class PARA_25(nn.Module):
     def __init__(self):
         super(PARA_25, self).__init__()
