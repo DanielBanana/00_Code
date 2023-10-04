@@ -237,7 +237,7 @@ if __name__ == '__main__':
 
     # NEURAL NETWORK
     ####################################################################################
-    layers = [16, 16, 16, 1]
+    layers = [15, 1]
     key1, key2 = random.split(random.PRNGKey(0), 2)
     neural_network = ExplicitMLP(features=layers)
     neural_network_parameters = neural_network.init(key2, np.zeros((1, 2)))
