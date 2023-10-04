@@ -14,8 +14,9 @@ def plot_results(t, z, z_ref, path):
     x_ax.plot(t, z_ref[:,0], label='ref')
     v_ax.plot(t, z_ref[:,1], label='ref')
     v_ax.set_title('Velocity')
-    x_ax.plot(t, z[:,0], label='sol')
-    v_ax.plot(t, z[:,1], label='sol')
+    if z is not None:
+        x_ax.plot(t, z[:,0], label='sol')
+        v_ax.plot(t, z[:,1], label='sol')
     x_ax.legend()
     v_ax.legend()
     fig.tight_layout()
