@@ -40,10 +40,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define VdP_NNH
 
 #include "fmi2common/InstanceData.h"
-#include <vector>
-#include <cmath>
-
-
 
 /*! This class wraps all data needed for a single instance of the FMU. */
 class VdP_NN : public InstanceData {
@@ -54,24 +50,20 @@ public:
 	/*! Destructor, writes out cached results from Therakles. */
 	~VdP_NN();
 
-
-private:
-	std::vector<std::vector<std::vector<double>>> weights;
-	std::vector<std::vector<double>> biases;
-	std::vector<std::vector<double>> activations;
-
-public:
-	void neural_network(const std::vector<int>& layer_sizes);
-
-	double relu(double x);
-
-	std::vector<double> feedforward(const std::vector<double>& input);
-
-	void setWeightsBiasesFromConstants();
-
 	/*! Initializes model */
-
 	void init();
+
+	template <size_t rows, size_t cols>
+	void matvecmul(double (&matrix)[rows][cols], double (&vec)[cols], double (&res)[rows]);
+
+	template <size_t entries>
+	void vecadd(double (&vec)[entries], double (&res)[entries]);
+
+	template <size_t entries>
+	void relu(double (&vec)[entries]);
+
+	template <size_t rows, size_t cols>
+	void relu_layer(double (&weights)[rows][cols], double (&bias)[rows], double (&input)[cols], double (&res)[rows], bool use_relu);
 
 	/*! This function triggers a state-update of the embedded model whenever our cached input
 		data differs from the input data in the model.

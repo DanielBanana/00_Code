@@ -38,11 +38,15 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <cstring>
 #include <sstream>
+#include <vector>
+#include <iostream>
+#include <cmath>
 
 #include "fmi2common/fmi2Functions.h"
 #include "fmi2common/fmi2FunctionTypes.h"
 #include "VdP_NN.h"
 #include "parameters.hpp"
+#include "weights_biases.h" // Include the header file
 
 // FMI interface variables
 
@@ -50,6 +54,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define FMI_INPUT_x 1
 #define FMI_INPUT_v 2
 #define FMI_OUTPUT_damping 3
+#define FMI_Input_1 4
 
 
 // *** Variables and functions to be implemented in user code. ***
@@ -62,6 +67,71 @@ InstanceData * InstanceData::create() {
 	return new VdP_NN; // caller takes ownership
 }
 
+// VdP_NN::weights = weights1;
+
+void VdP_NN::neural_network(const std::vector<int>& layer_sizes) {
+	int num_layers = layer_sizes.size();
+	weights.resize(num_layers - 1);
+	biases.resize(num_layers - 1);
+	activations.resize(num_layers);
+
+	// Initialize weights and biases randomly (for simplicity)
+	if (false) {
+		for (int i = 0; i < num_layers - 1; ++i) {
+			int num_neurons_in = layer_sizes[i];
+			int num_neurons_out = layer_sizes[i + 1];
+
+			// Initialize weights randomly (you can use a different initialization method)
+			weights[i].resize(num_neurons_out, std::vector<double>(num_neurons_in));
+			for (int j = 0; j < num_neurons_out; ++j) {
+				for (int k = 0; k < num_neurons_in; ++k) {
+					weights[i][j][k] = (rand() % 2000 - 1000) / 1000.0; // Random values between -1 and 1
+				}
+			}
+
+			// Initialize biases to zeros
+			biases[i].resize(num_neurons_out, 0.0);
+		}
+	}
+	else {
+		// weights = given_weights;
+	}
+
+}
+
+// ReLU activation function
+double VdP_NN::relu(double x) {
+	return std::max(0.0, x);
+}
+
+// Forward propagation for evaluation
+std::vector<double> VdP_NN::feedforward(const std::vector<double>& input) {
+	int num_layers = activations.size();
+	activations[0] = input;
+
+	for (int i = 0; i < num_layers - 1; ++i) {
+		int num_neurons_in = weights[i][0].size();
+		int num_neurons_out = weights[i].size();
+		std::vector<double> layer_output(num_neurons_out, 0.0);
+
+		for (int j = 0; j < num_neurons_out; ++j) {
+			double weighted_sum = biases[i][j];
+			for (int k = 0; k < num_neurons_in; ++k) {
+				weighted_sum += weights[i][j][k] * activations[i][k];
+			}
+			layer_output[j] = relu(weighted_sum);
+		}
+
+		activations[i + 1] = layer_output;
+	}
+
+	return activations.back();
+}
+
+void VdP_NN::setWeightsBiasesFromConstants(){
+	weights = NeuralNetworkParams::weights;
+	biases = NeuralNetworkParams::biases;
+}
 
 VdP_NN::VdP_NN() :
 	InstanceData()
@@ -70,17 +140,17 @@ VdP_NN::VdP_NN() :
 	m_stringVar[FMI_PARA_ResultRootDir] = "";
 	m_realVar[FMI_INPUT_x] = 1.0;
 	m_realVar[FMI_INPUT_v] = 0.0;
+	m_realVar[FMI_Input_1] = 31.0;
 
 	// initialize output variables
 	m_realVar[FMI_OUTPUT_damping] = 0.0;
 
-
+	neural_network(layer_sizes);
+	setWeightsBiasesFromConstants();
 }
-
 
 VdP_NN::~VdP_NN() {
 }
-
 
 // create a model instance
 void VdP_NN::init() {
@@ -105,39 +175,6 @@ void VdP_NN::init() {
 	logger(fmi2OK, "progress", "Initialization complete.");
 }
 
-template <size_t rows, size_t cols>
-void VdP_NN::matvecmul(double (&matrix)[rows][cols], double (&vec)[cols], double (&res)[rows]){
-	for (size_t i = 0; i < rows; ++i){
-		for (size_t j = 0; j < cols; ++j){
-			res[i] += matrix[i][j] * vec[j];
-		}
-	}
-}
-
-template <size_t entries>
-void VdP_NN::vecadd(double (&vec)[entries], double (&add)[entries]){
-	for (size_t i = 0; i < entries; ++i){
-		vec[i] += add[i];
-	}
-}
-
-template <size_t entries>
-void VdP_NN::relu(double (&vec)[entries]){
-	for (size_t i = 0; i < entries; ++i){
-		vec[i] = std::max(vec[i], 0.0);
-	}
-}
-
-template <size_t rows, size_t cols>
-void VdP_NN::relu_layer(double (&weights)[rows][cols], double (&bias)[rows], double (&input)[cols], double (&res)[rows], bool use_relu){
-	matvecmul(weights, input, res);
-	vecadd(res, bias);
-	if (use_relu) {
-		relu(res);
-	}
-
-}
-
 // model exchange: implementation of derivative and output update
 void VdP_NN::updateIfModified() {
 	if (!m_externalInputVarsModified)
@@ -147,18 +184,20 @@ void VdP_NN::updateIfModified() {
 	const std::string & ResultRootDir = m_stringVar[FMI_PARA_ResultRootDir];
 	double x = m_realVar[FMI_INPUT_x];
 	double v = m_realVar[FMI_INPUT_v];
-
+	double test = m_realVar[FMI_Input_1];
 
 	// TODO : implement your code here
-	double in[2] = {x, v};
-	double res[15] = {};
-	double output[1] = {};
-	relu_layer(weights1, bias1, in, res, true);
-	relu_layer(weights2, bias2, res, output, false);
+
+	std::vector<double> input = {x, v};
+	// double res[layer_sizes[0]] = {};
+
+	// Forward pass for evaluation
+    std::vector<double> prediction = feedforward(input);
 
 	// output variables
-	m_realVar[FMI_OUTPUT_damping] = output[0]; // TODO : store your results here
-
+	// m_realVar[FMI_OUTPUT_damping] = prediction[0]; // TODO : store your results here
+	// m_realVar[FMI_OUTPUT_damping] = weights[0][0][0];
+	m_realVar[FMI_OUTPUT_damping] = test;
 
 	// reset externalInputVarsModified flag
 	m_externalInputVarsModified = false;
@@ -272,8 +311,6 @@ bool deserializeMap(VdP_NN * obj, const char * & dataPtr, const char * typeID, s
 	}
 	return true;
 }
-
-
 
 void VdP_NN::serializeFMUstate(void * FMUstate) {
 	char * dataPtr = reinterpret_cast<char*>(FMUstate);

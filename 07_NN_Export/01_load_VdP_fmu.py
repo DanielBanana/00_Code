@@ -68,6 +68,4 @@ if __name__ == '__main__':
     fmu_evaluator = FMUEvaluator(fmu_filename, Tstart, Tend)
 
     output = fmu_evaluator.evaluate_nn_fmu(t=Tend, inputs = [1.0, 0.0])
-
-    z_ref = f_euler(z0=z0, t=t, fmu_evaluator=fmu_evaluator, model=None, model_parameters=None)
     fmu_evaluator.reset_fmu(Tstart, Tend)

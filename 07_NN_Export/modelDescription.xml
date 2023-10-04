@@ -1,6 +1,6 @@
 <fmiModelDescription fmiVersion="2.0" modelName="VdP_NN" guid="{d91ea390-56dd-11ee-9bb7-00155d484d86}" version="1.0.0" author="not specified" copyright="not specified" license="not specified" description="" generationTool="ghorwin/FMICodeGenerator@github - C++ Code using FMI support functions from IBK@TU Dresden" generationDateAndTime="2023-09-19T01:15:32Z" variableNamingConvention="structured" numberOfEventIndicators="0">
 
-	
+
 
 	<ModelExchange modelIdentifier="VdP_NN" completedIntegratorStepNotNeeded="true" canNotUseMemoryManagementFunctions="true" canGetAndSetFMUstate="true" canSerializeFMUstate="true" />
 
@@ -17,42 +17,14 @@
 
 	<ModelVariables>
 
-		
-		
-
-
-		
 		<ScalarVariable name="ResultRootDir" description="A writeable directory generated for each slave of this FMU to store slave-specific output/data files." valueReference="42" variability="fixed" causality="parameter" initial="exact">
 			<String start="" />
 		</ScalarVariable>
-
-
-		
-		<ScalarVariable name="x" description="Van der Pol Input x (Location)" valueReference="1" variability="continuous" causality="input">
-			<Real start="0.0" />
-		</ScalarVariable>
-
-
-		
-		<ScalarVariable name="v" description="Van der Pol Input v (Velocity)" valueReference="2" variability="continuous" causality="input">
-			<Real start="0.0" />
-		</ScalarVariable>
-
-
-		
-		<ScalarVariable name="damping" description="Van der Pol damping term" valueReference="3" variability="continuous" causality="output" initial="approx">
-			<Real start="0.0" />
-		</ScalarVariable>
-
 
 	</ModelVariables>
 
 	<ModelStructure>
 		<Outputs>
-			
-
-			<Unknown index="4" dependencies="2 3" />
-
 
 		</Outputs>
 	</ModelStructure>

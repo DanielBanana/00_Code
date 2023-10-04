@@ -54,7 +54,7 @@
 
 		<!-- For input variables we need to give a 'start' attribute -->
 		<!-- For output variables with initial="exact" we need to give a 'start' attribute -->
-		
+
 
 		<!-- Index of variable = "1" -->
 		<ScalarVariable
@@ -66,43 +66,6 @@
 			initial="exact">
 			<String start=""/>
 		</ScalarVariable>
-		
-
-		<!-- Index of variable = "2" -->
-		<ScalarVariable
-			name="x"
-            description="Van der Pol Input x (Location)"
-			valueReference="1"
-			variability="continuous"
-			causality="input"
-			initial="calculated">
-			<Real/>
-		</ScalarVariable>
-		
-
-		<!-- Index of variable = "3" -->
-		<ScalarVariable
-			name="v"
-            description="Van der Pol Input v (Velocity)"
-			valueReference="2"
-			variability="continuous"
-			causality="input"
-			initial="calculated">
-			<Real/>
-		</ScalarVariable>
-		
-
-		<!-- Index of variable = "4" -->
-		<ScalarVariable
-			name="damping"
-            description="Van der Pol damping term"
-			valueReference="3"
-			variability="continuous"
-			causality="output"
-			initial="approx">
-			<Real start="0.0"/>
-		</ScalarVariable>
-		
 
 	</ModelVariables>
 
@@ -111,9 +74,6 @@
 			<!-- dependencies must be defined for all output quantities. 'dependencyKind' is only needed
 				when some dependencies are constant factors or parameters.
 			-->
-			
-			<Unknown index="4" dependencies="2 3"/>
-		
 
 		</Outputs>
 	</ModelStructure>
