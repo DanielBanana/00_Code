@@ -1,0 +1,35 @@
+<?xml version='1.0' encoding='utf-8'?>
+<fmiModelDescription fmiVersion="2.0" modelName="NN10" guid="{1716a4c4-5a1f-11ee-87aa-00155d59f2a0}" version="1.0.0" author="not specified" copyright="not specified" license="not specified" description="" generationTool="ghorwin/FMICodeGenerator@github - C++ Code using FMI support functions from IBK@TU Dresden" generationDateAndTime="2023-09-23T04:40:07Z" variableNamingConvention="structured" numberOfEventIndicators="0">
+
+	
+
+	<ModelExchange modelIdentifier="NN10" completedIntegratorStepNotNeeded="true" canNotUseMemoryManagementFunctions="true" canGetAndSetFMUstate="true" canSerializeFMUstate="true"></ModelExchange>
+
+	<CoSimulation modelIdentifier="NN10" canHandleVariableCommunicationStepSize="true" canInterpolateInputs="false" maxOutputDerivativeOrder="0" canNotUseMemoryManagementFunctions="true" canGetAndSetFMUstate="true" canSerializeFMUstate="true"></CoSimulation>
+
+	<LogCategories>
+		<Category name="logStatusWarning"></Category>
+		<Category name="logStatusError"></Category>
+		<Category name="logAll"></Category>
+		<Category name="logFmi2Call"></Category>
+	</LogCategories>
+
+	<DefaultExperiment startTime="0.0" stopTime="10.0" tolerance="1e-06"></DefaultExperiment>
+
+	<ModelVariables>
+
+		
+		
+		
+
+	<ScalarVariable name="FMI_INPUT_1" description="Input Description 1" valueReference="1" variability="continuous" causality="input"><Real start="1.0"></Real></ScalarVariable><ScalarVariable name="FMI_INPUT_2" description="Input Description 2" valueReference="2" variability="continuous" causality="input"><Real start="1.0"></Real></ScalarVariable><ScalarVariable name="FMI_OUTPUT_1" description="Output Description 1" valueReference="3" variability="continuous" causality="output" initial="exact"><Real start="0.0"></Real></ScalarVariable></ModelVariables>
+
+	<ModelStructure>
+		<Outputs>
+			
+			
+
+		<Unknown index="3" dependencies="1 2"></Unknown></Outputs>
+	</ModelStructure>
+
+</fmiModelDescription>
