@@ -1,3 +1,4 @@
 {
-    "python.analysis.typeCheckingMode": "basic"
+    "python.analysis.typeCheckingMode": "basic",
+    "cmake.sourceDirectory": "/home/pommer/00_Code/00_siemens_env/lib/python3.10/site-packages/cmake/data/share/cmake-3.26/Modules/FortranCInterface"
 }
