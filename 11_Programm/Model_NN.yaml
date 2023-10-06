@@ -1,5 +1,3 @@
 name: NN # NeuralNetwork
 layers: [15, 15]
 activation: relu
-restore: false # Whether or not to restore old parmeters from a checkpoint
-restore_name: results # Directory from which old parameters should be restored
