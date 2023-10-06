@@ -2,8 +2,11 @@ results_directory: results
 plot_loss: true
 plot_prediction: true
 plot_parameters: true
-save_nn_parameters: true
+save_parameters: true
+load_parameters: false # Whether or not to restore old parmeters from a checkpoint
+load_name: results # Directory from which old parameters should be restored
 log_process: true
 device: cpu
+use_multiprocessing: false
 processes: 1
-eval_freq: 10
+eval_freq: 25
