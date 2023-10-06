@@ -16,6 +16,6 @@ stimulate: false
 aug_state: false
 n_aug_states: 2
 simple: false
-use_fmu: false
+fmu: false
 fmu_directory: VdP_FMU
 
