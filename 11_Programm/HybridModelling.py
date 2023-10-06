@@ -10,12 +10,14 @@ import os
 import torch
 from scipy.optimize import minimize
 import sys
+import time
 import yaml
 
 sys.path.insert(1, os.getcwd())
 from cbo_in_python.src.datasets import create_generic_dataset, load_generic_dataloaders
+from cbo_in_python.src.torch_.models import *
 from VdP import VdP
-from utils import create_results_directory, create_results_subdirectories,
+from utils import create_results_directory, create_results_subdirectories, create_residual_reference_solution
 import ASM
 import CBO
 
@@ -55,11 +57,11 @@ if __name__ == '__main__':
     # PROBLEM SETUP
     parser.add_argument('--problemDescription', type=str, default='Problem_VdP.yaml', help='''Yaml file of the
                         the problem setup''')
-    parser.add_argument('--datamodelDescription', type=str, default='Datamodel_NN.yaml', help='''Yaml file of the
+    parser.add_argument('--datamodelDescription', type=str, default='Model_NN.yaml', help='''Yaml file of the
                         the datadriven model setup''')
-    parser.add_argument('--optimizerDescription', type=str, default='Optimizer_ASM.yaml', help='''Yaml file of the
+    parser.add_argument('--optimizerDescription', type=str, default='Optimizer_CBO.yaml', help='''Yaml file of the
                         the optimizer setup''')
-    parser.add_argument('--gS', type=str, default='gS.yaml', help='''Where to save the results
+    parser.add_argument('--gS', type=str, default='GeneralSettings.yaml', help='''Where to save the results
                         and what to plot''')
     args = parser.parse_args()
 
@@ -67,40 +69,44 @@ if __name__ == '__main__':
     # are also in this directory
     path = os.path.abspath(__file__)
     directory = os.path.sep.join(path.split(os.path.sep)[:-1])
-    pd_path = os.path.join(directory, args.problemDescription)
-    dd_path = os.path.join(directory, args.datamodelDescription)
-    od_path = os.path.join(directory, args.optimizerDescription)
-    general_settings_path = os.path.join(directory, args.gS)
+    pD_path = os.path.join(directory, args.problemDescription)
+    mD_path = os.path.join(directory, args.datamodelDescription)
+    oD_path = os.path.join(directory, args.optimizerDescription)
+    gS_path = os.path.join(directory, args.gS)
 
     # TODO logger
 
     # Read out the problem description:
-    with open(pd_path, 'r') as file:
+    with open(pD_path, 'r') as file:
         try:
             pD = yaml.safe_load(file)
         except yaml.YAMLError as e:
             print("Error reading YAML:", e)
+            exit(2)
 
-    # Read out the problem description:
-    with open(dd_path, 'r') as file:
+    # Read out the model description:
+    with open(mD_path, 'r') as file:
         try:
             mD = yaml.safe_load(file)
         except yaml.YAMLError as e:
             print("Error reading YAML:", e)
+            exit(2)
 
-    # Read out the problem description:
-    with open(od_path, 'r') as file:
+    # Read out the optimizer description:
+    with open(oD_path, 'r') as file:
         try:
             oD = yaml.safe_load(file)
         except yaml.YAMLError as e:
             print("Error reading YAML:", e)
+            exit(2)
 
     # Read out the problem description:
-    with open(general_settings_path, 'r') as file:
+    with open(gS_path, 'r') as file:
         try:
             gS = yaml.safe_load(file)
         except yaml.YAMLError as e:
             print("Error reading YAML:", e)
+            exit(2)
 
 
     results_directory = create_results_directory(directory=directory, results_directory_name=gS['results_directory'])
@@ -112,7 +118,11 @@ if __name__ == '__main__':
     epoch = 0
     x0_train = np.array(pD['ic'])
 
-    if pD['use_fmu']:
+    if oD['name'] == 'CBO':
+        gS['device'], gS['use_multiprocessing'] = CBO.determine_device(gS['device'], gS['use_multiprocessing'])
+
+
+    if pD['fmu']:
         pass
     else:
         # 1. Create Reference Solution
@@ -121,6 +131,7 @@ if __name__ == '__main__':
         namespace = namespaces[pD['file']]
         ode = namespace.ode
         ode_res = namespace.ode_res
+        ode_hybrid = namespace.ode_hybrid
         t_train, x_train_ref, t_test, x_test_ref, x0_test = create_reference_solution(
             pD['integration_parameters']['start'],
             pD['integration_parameters']['end'],
@@ -139,35 +150,46 @@ if __name__ == '__main__':
         if oD['residual_training']:
             residual_directory, checkpoint_directory = create_results_subdirectories(results_directory=results_directory, trajectory=False, residual=True)
 
-            x_train_res, y_train_res, x_test_res, y_test_res = CBO.create_residual_reference_solution(t_train, x_train_ref, t_test, x_test_ref, pD['variables'])
+            x_train_res, y_train_res, x_test_res, y_test_res = create_residual_reference_solution(t_train, x_train_ref, t_test, x_test_ref, pD['variables'], ode_res)
 
             if mD['name'] == 'NN':
                 if oD['name'] == 'CBO':
                     layers = [pD['inputs']] + mD['layers'] + [pD['outputs']]
-                    datamodel = CBO.CustomMLP()
-                    hybrid_model = CBO.Hybrid_Python(pD['variables'], datamodel, x0_train, t_train, mode='residual')
+                    datamodel = CustomMLP(layers)
+                    hybrid_model = CBO.Hybrid_Python(pD['variables'], datamodel, x0_train, t_train, ode_hybrid, mode='residual')
                 elif oD['name'] == 'ASM':
                     layers = mD['layers'] + [pD['outputs']]
-                    datamodel, parameters = create_nn(layers, x0_train)
+                    datamodel, parameters = ASM.create_nn(layers, x0_train)
+                    hybrid_model = None
                 else:
                     logger.error(f'Unknown Model: {oD["name"]}')
                     exit(1)
 
-                orbax_checkpointer = orbax.checkpoint.PyTreeCheckpointer()
-                options = orbax.checkpoint.CheckpointManagerOptions(max_to_keep=5, create=True)
-                checkpoint_manager = orbax.checkpoint.CheckpointManager(checkpoint_directory, orbax_checkpointer, options)
+                checkpoint_manager_save = None
 
-                if gS['restore']:
-                    step = checkpoint_manager.latest_step()
-                    parameters = checkpoint_manager.restore(step)
+                if gS['save_parameters']:
+                    checkpointer_save = orbax.checkpoint.PyTreeCheckpointer()
+                    options = orbax.checkpoint.CheckpointManagerOptions(max_to_keep=5, create=True)
+                    checkpoint_manager_save = orbax.checkpoint.CheckpointManager(checkpoint_directory, checkpointer_save, options)
+                else:
+                    checkpoint_manager_save = None
+
+                if gS['load_parameters']:
+                    load_directory = os.path.join(directory, gS['load_name'])
+                    checkpointer_load = orbax.checkpoint.PyTreeCheckpointer()
+                    options = orbax.checkpoint.CheckpointManagerOptions(max_to_keep=5, create=True)
+                    checkpoint_manager_load = orbax.checkpoint.CheckpointManager(restore_directory, checkpointer_load, options)
+                    step = checkpoint_manager_load.latest_step()
+                    parameters = checkpoint_manager_load.restore(step)
                     if oD['name'] == 'CBO':
                         datamodel = CBO.load_jax_parameters(datamodel, parameters)
 
                 # Arguments for ASM and CBO
                 optimizer_args = {'problemDescription': pD,
+                    'modelDescription': mD,
                     'optimizerDescription': oD,
                     'generalSettings': gS,
-                    'epoch': epoch,
+                    'epochs': oD['epochs_res'],
                     'reference_data': reference_data,
                     'losses_train' : [],
                     'losses_train_res': [],
@@ -180,10 +202,11 @@ if __name__ == '__main__':
                     'best_loss_test': np.inf,
                     'best_pred': None,
                     'best_pred': None,
-                    'checkpoint_manager': checkpoint_manager,
+                    'checkpoint_manager': checkpoint_manager_save,
                     'logger': logger,
                     'results_directory': residual_directory,
-                    'residual': True
+                    'residual': True,
+                    'pointers': None # only needed for FMU
                 }
 
                 # if pD['type'] == 'classification':
@@ -202,18 +225,13 @@ if __name__ == '__main__':
                                                                                 shuffle=False)
                     optimizer_args['train_dataloader'] = train_dataloader
                     optimizer_args['test_dataloader'] = test_dataloader
-                    optimizer_args['device'] = oD['device']
-                    optimizer_args['use_multiprocessing'] = oD['use_multiprocessing']
-                    optimizer_args['processes'] = oD['processes']
-                    optimizer_args['particles'] = oD['processes']
-                    optimizer_args['particles_batch_size'] = oD['processes']
 
                     time_start = time.time()
 
-                    CBO.train(datamodel, optimizer_args)
+                    CBO.train(model=hybrid_model, args=optimizer_args)
 
                     experiment_time = time.time()-time_start
-                    datamodel, ckpt = CBO.get_best_parameters(datamodel, residual_directory)
+                    datamodel, ckpt = CBO.get_best_parameters(hybrid_model, residual_directory)
 
                     if gS['plot_prediction']:
                         datamodel.t = t_train
