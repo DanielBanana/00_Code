@@ -1,5 +1,6 @@
 from jax import jit
 from jax import numpy as jnp
+import numpy as np
 from types import SimpleNamespace
 
 
@@ -44,5 +45,30 @@ def ode_stim_res(z, t, variables):
                            -kappa*z[0]/mass + 1.2*jnp.cos(jnp.pi/5*t)])
     return derivative
 
-d = {'ode': ode, 'ode_res': ode_res, 'ode_stim': ode_stim, 'ode_stim_res': ode_stim_res}
+def ode_hybrid(z, t, variables, parameters, model_function):
+    '''Calculates the right hand side of the hybrid ODE, where
+    the damping term is replaced by the neural network'''
+    kappa = variables['kappa']
+    mu = variables['mu']
+    mass = variables['mass']
+    derivative = np.array([np.array((z[1],)),
+                        np.array((-kappa*z[0]/mass,)) + model_function(parameters, z)]).flatten()
+    return derivative
+
+def ode_hybrid_stim(z, t, variables, parameters, model_function):
+    '''Calculates the right hand side of the hybrid ODE, where
+    the damping term is replaced by the neural network'''
+    kappa = variables['kappa']
+    mu = variables['mu']
+    mass = variables['mass']
+    derivative = np.array([np.array((z[1],)),
+                            np.array((-kappa*z[0]/mass,)) + model_function(parameters, z) + np.array(1.2*np.cos(np.pi/5*t))]).flatten()
+    return derivative
+
+d = {'ode': ode,
+     'ode_res': ode_res,
+     'ode_stim': ode_stim,
+     'ode_stim_res': ode_stim_res,
+     'ode_hybrid': ode_hybrid,
+     'ode_hybrid_stim': ode_hybrid_stim}
 VdP = SimpleNamespace(**d)
