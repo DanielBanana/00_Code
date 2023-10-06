@@ -20,7 +20,7 @@ import orbax.checkpoint
 
 sys.path.insert(1, os.getcwd())
 # from plot_results import plot_results, plot_losses, get_file_path
-from plot_results import plot_losses, get_file_path, visualise_wb
+# from plot_results import plot_losses, get_file_path, visualise_wb
 from fmu_helper import FMUEvaluator
 from cbo_in_python.src.torch_.models import *
 # from cbo_in_python.src.datasets import load_mnist_dataloaders, load_parabola_dataloaders, f
@@ -29,7 +29,7 @@ from cbo_in_python.src.torch_.optimizer import Optimizer
 from cbo_in_python.src.torch_.loss import Loss
 from torch.utils.data import Dataset, DataLoader
 
-from utils import build_plot, result_plot_multi_dim, create_results_directory, create_results_subdirectories, create_doe_experiments, create_experiment_directory
+from utils import build_plot, result_plot_multi_dim, create_results_directory, create_results_subdirectories, create_doe_experiments, create_experiment_directory, visualise_wb
 
 import logging
 from sklearn.preprocessing import MinMaxScaler
@@ -49,16 +49,6 @@ DATASETS = {
 }
 
 # PYTHON ONLY ODEs
-# @jit
-# def ode(z, t, ode_parameters):
-#     '''Calculates the right hand side of the original ODE.'''
-#     kappa = ode_parameters[0]
-#     mu = ode_parameters[1]
-#     mass = ode_parameters[2]
-#     derivative = jnp.array([z[1],
-#                            -kappa*z[0]/mass + (mu*(1-z[0]**2)*z[1])/mass])
-#     return derivative
-
 @jit
 def ode(z, t, ode_parameters):
     '''Calculates the right hand side of the original ODE.'''
@@ -176,13 +166,14 @@ class Hybrid_FMU(nn.Module):
 
 # Python only Hybrid model
 class Hybrid_Python(nn.Module):
-    def __init__(self, ode_parameters, augment_model, z0, t, mode='trajectory'):
+    def __init__(self, ode_parameters, augment_model, z0, t, hybrid_ode, mode='trajectory'):
         super(Hybrid_Python, self).__init__()
 
         self.ode_parameters = ode_parameters
         self.augment_model = augment_model
         self.z0 = z0
         self.t = t
+        self.hybrid_ode = hybrid_ode
 
         if mode=='residual':
             self.forward = self.forward_residual
@@ -243,28 +234,28 @@ class Hybrid_Python(nn.Module):
         # z = z.at[1:].set(result[:-1])
         for i in range(len(t)-1):
             dt = t[i+1] - t[i]
-            z[i+1] = z[i] + dt * self.hybrid_ode(z[i], t[i], ode_parameters, nn_parameters)
+            z[i+1] = z[i] + dt * self.hybrid_ode(z[i], t[i], ode_parameters, nn_parameters, self.augment_model_function)
         return z
 
-    def hybrid_ode(self, z, t, ode_parameters, nn_parameters):
-        '''Calculates the right hand side of the hybrid ODE, where
-        the damping term is replaced by the neural network'''
-        kappa = ode_parameters[0]
-        mu = ode_parameters[1]
-        mass = ode_parameters[2]
-        derivative = np.array([np.array((z[1],)),
-                               np.array((-kappa*z[0]/mass,)) + self.augment_model_function(nn_parameters, z)]).flatten()
-        return derivative
+    # def hybrid_ode(self, z, t, variables, parameters):
+    #     '''Calculates the right hand side of the hybrid ODE, where
+    #     the damping term is replaced by the neural network'''
+    #     kappa = ode_parameters[0]
+    #     mu = ode_parameters[1]
+    #     mass = ode_parameters[2]
+    #     derivative = np.array([np.array((z[1],)),
+    #                            np.array((-kappa*z[0]/mass,)) + self.augment_model_function(nn_parameters, z)]).flatten()
+    #     return derivative
 
-    def hybrid_ode_stim(self, z, t, ode_parameters, nn_parameters):
-        '''Calculates the right hand side of the hybrid ODE, where
-        the damping term is replaced by the neural network'''
-        kappa = ode_parameters[0]
-        mu = ode_parameters[1]
-        mass = ode_parameters[2]
-        derivative = np.array([np.array((z[1],)),
-                                np.array((-kappa*z[0]/mass,)) + self.augment_model_function(nn_parameters, z) + np.array(1.2*np.cos(np.pi/5*t))]).flatten()
-        return derivative
+    # def hybrid_ode_stim(self, z, t, ode_parameters, nn_parameters):
+    #     '''Calculates the right hand side of the hybrid ODE, where
+    #     the damping term is replaced by the neural network'''
+    #     kappa = ode_parameters[0]
+    #     mu = ode_parameters[1]
+    #     mass = ode_parameters[2]
+    #     derivative = np.array([np.array((z[1],)),
+    #                             np.array((-kappa*z[0]/mass,)) + self.augment_model_function(nn_parameters, z) + np.array(1.2*np.cos(np.pi/5*t))]).flatten()
+    #     return derivative
 
 def f_euler_fmu(z0, t, fmu_evaluator: FMUEvaluator, model, model_parameters, pointers):
     '''Applies euler to the VdP ODE by calling the fmu; returns the trajectory'''
@@ -496,58 +487,73 @@ def sum_loss(x, y):
     return a.sum()
 
 def train(model:Hybrid_FMU or Hybrid_Python,
-          train_dataloader,
-          test_dataloader,
-          device,
-          use_multiprocessing,
-          processes,
-          epochs,
-          particles,
-          particles_batch_size,
-          alpha,
-          sigma,
-          l,
-          dt,
-          anisotropic,
-          eps,
-          partial_update,
-          cooling,
-          eval_freq,
-          problem_type,
-          pointers,
-          logger,
-          residual=False,
-          plotting_reference_data={},
-          restore=False):
-    accuracies_train = []
-    losses_train = []
-    accuracies_test = []
-    losses_test = []
-    best_loss = np.inf
+        args: dict):
+        #   train_dataloader,
+        #   test_dataloader,
+        #   device,
+        #   use_multiprocessing,
+        #   processes,
+        #   epochs,
+        #   particles,
+        #   particles_batch_size,
+        #   alpha,
+        #   sigma,
+        #   l,
+        #   dt,
+        #   anisotropic,
+        #   eps,
+        #   partial_update,
+        #   cooling,
+        #   eval_freq,
+        #   problem_type,
+        #   pointers,
+        #   logger,
+        #   residual=False,
+        #   plotting_reference_data={},
+        #   restore=False):
 
-    run_file = os.path.join(plotting_reference_data['results_directory'], 'results.txt')
+
+    pD = args['problemDescription']
+    mD = args['modelDescription']
+    oD = args['optimizerDescription']
+    gS = args['generalSettings']
+    residual = oD['residual_training']
+    restore = gS['load_parameters']
+    reference_data = args['reference_data']
+    pointers = args['pointers']
+    results_directory = args['results_directory']
+    epochs = args['epochs']
+    logger = args['logger']
+
+    # accuracies_train = []
+    # losses_train = []
+    # accuracies_test = []
+    # losses_test = []
+    # best_loss = np.inf
+
+    # run_file = os.path.join(plotting_reference_data['results_directory'], 'results.txt')
 
     # if not residual:
     #     restore=True
 
     # Optimizes the Neural Network with CBO
-    optimizer = Optimizer(model, n_particles=particles, alpha=alpha, sigma=sigma,
-                          l=l, dt=dt, anisotropic=anisotropic, eps=eps, partial_update=partial_update,
-                          use_multiprocessing=use_multiprocessing, n_processes=processes,
-                          particles_batch_size=particles_batch_size, device=device, fmu=False, residual=residual, restore=restore)
+    optimizer = Optimizer(model, n_particles=oD['particles'], alpha=oD['alpha'], sigma=oD['sigma'],
+                          l=oD['l'], dt=oD['dt'], anisotropic=oD['anisotropic'], eps=oD['eps'], partial_update=oD['partial_update'],
+                          use_multiprocessing=gS['use_multiprocessing'], n_processes=gS['processes'],
+                          particles_batch_size=oD['particles_batch_size'], device=gS['device'], fmu=pD['fmu'], residual=residual, restore=restore)
 
-    if problem_type == 'classification':
+    if pD['type'] == 'classification':
         loss_fn = Loss(F.nll_loss, optimizer)
-    elif problem_type == 'regression':
+    elif pD['type']  == 'regression':
         loss_fn = Loss(F.mse_loss, optimizer)
         # loss_fn = Loss(sum_loss , optimizer)
 
     # CALCULATE THE LOSS OVER THE WHOLE TRAJECTORY, NO BATCHES
-    t_train = plotting_reference_data['t_train']
-    t_test = plotting_reference_data['t_test']
-    z_ref_train = plotting_reference_data['z_ref_train']
-    z_ref_test = plotting_reference_data['z_ref_test']
-    results_directory = plotting_reference_data['results_directory']
+    t_train = reference_data['t_train']
+    t_test = reference_data['t_test']
+    z_ref_train = reference_data['x_train_ref']
+    z_ref_test = reference_data['x_test_ref']
+    # results_directory = plotting_reference_data['results_directory']
 
     model.trajectory_mode()
     model.set_trajectory_variables(z0=z_ref_train[0], t=t_train)
@@ -564,22 +570,22 @@ def train(model:Hybrid_FMU or Hybrid_Python,
     if residual:
         model.residual_mode()
 
-    result_plot_multi_dim('Custom', 'VdP', os.path.join(results_directory, f'Initial.png'),
+    result_plot_multi_dim('Custom', pD['name'], os.path.join(results_directory, f'Initial.png'),
                 t_train, pred_train, t_test, pred_test,
                 np.hstack((t_train, t_test)), np.vstack((z_ref_train, z_ref_test)))
 
-    for epoch in range(epochs):
+    for epoch in range(args['epochs']):
         accuracies_epoch_train = []
         losses_epoch_train = []
-        for batch_idx, (input_train, output_train) in enumerate(train_dataloader):
-            input_train, output_train = input_train.to(device), output_train.to(device)
+        for batch_idx, (input_train, output_train) in enumerate(args['train_dataloader']):
+            input_train, output_train = input_train.to(gS['device']), output_train.to(gS['device'])
             # Calculate current solution
             if residual:
                 # If we calculate on the residual the inputs are the states of the ODE
                 # e.g. location and velocity for Van der Pol. The outputs are the residuals
                 # of the ODE derivatives, i.e. the part of the derivative that is currently
                 # unaccounted for by the simple ODE model
-                if problem_type == 'classification':
+                if pD['type'] == 'classification':
                     # loss_train, train_acc = _evaluate_class(model, X, y, F.nll_loss)
                     pass
                 else:
@@ -610,59 +616,31 @@ def train(model:Hybrid_FMU or Hybrid_Python,
 
             optimizer.step()
 
-            if batch_idx % 10 == 0:
-                logger.info('Train Epoch: {} [{}/{} ({:.0f}%)]\t Batch Loss: {:.6f}'.format(
-                    epoch, batch_idx * len(input_train), len(train_dataloader.dataset),
-                    100. * batch_idx / len(train_dataloader), loss_train.item()))
+            # if batch_idx % 10 == 0:
+            #     logger.info('Train Epoch: {}/{} [{}/{} ({:.0f}%)]\t Batch Loss: {:.6f}'.format(
+            #         epoch, args['epochs'], batch_idx * len(input_train), len(args['train_dataloader'].dataset),
+            #         100. * batch_idx / len(args['train_dataloader']), loss_train.item()))
 
-        # CALCULATE THE LOSS OVER THE WHOLE TRAJECTORY, NO BATCHES
-        # if residual:
-        #     if problem_type == 'classification':
-        #         # loss_train, train_acc = _evaluate_class(model, X, y, F.nll_loss)
-        #         pass
-        #     else:
-        #         pred_train_whole_trajectory = model(train_dataloader.dataset.x)
-        # else:
-        #     model.t = train_dataloader.dataset.x.detach().numpy()
-        #     model.z0 = train_dataloader.dataset.y[0]
-        #     if isinstance(model, Hybrid_FMU):
-        #         pred_train_whole_trajectory = torch.tensor(model(pointers))
-        #     else:
-        #         pred_train_whole_trajectory = torch.tensor(model(stim=False))
-        # loss_whole_trajectory = _evaluate_reg(pred_train_whole_trajectory, train_dataloader.dataset.y, F.mse_loss).cpu()
-        # acc_whole_trajectory = 0.0
-        # losses_train.append(float(loss_whole_trajectory.detach().numpy()))
-        # accuracies_train.append(acc_whole_trajectory)
+        if residual:
+            # For residuals the loss for all samples is just the mean of the epoch losses
+            loss_train_res = np.mean(np.array(losses_epoch_train))
+            args['losses_train_res'].append(loss_train_res)
 
-        # logger.info('Loss (Training): {:.5f}'.format(float(loss_whole_trajectory.detach().numpy())))
+            # Determine the residual loss for the test dataset
+            if pD['type'] == 'classification':
+                # loss_train, train_acc = _evaluate_class(model, X, y, F.nll_loss)
+                pass
+            else:
+                pred_test = model(args['test_dataloader'].dataset.x)
+                acc_whole_trajectory = 0.0
 
-        # with torch.no_grad():
-        #     if residual:
-        #         if problem_type == 'classification':
-        #             # loss_train, train_acc = _evaluate_class(model, X, y, F.nll_loss)
-        #             pass
-        #         else:
-        #             pred_test_whole_trajectory = model(test_dataloader.dataset.x)
-        #     else:
-        #         model.t = test_dataloader.dataset.x.detach().numpy()
-        #         model.z0 = test_dataloader.dataset.y[0]
-        #         if isinstance(model, Hybrid_FMU):
-        #             pred_test_whole_trajectory = torch.tensor(model(pointers))
-        #         else:
-        #             pred_test_whole_trajectory = torch.tensor(model(stim=False))
-        #     loss_whole_trajectory = _evaluate_reg(pred_test_whole_trajectory, test_dataloader.dataset.y, F.mse_loss).cpu()
-        #     acc_whole_trajectory = 0.0
-        # losses_test.append(float(loss_whole_trajectory.detach().numpy()))
-        # accuracies_test.append(acc_whole_trajectory)
+            loss_test_res = _evaluate_reg(pred_test, args['test_dataloader'].dataset.y, F.mse_loss).cpu().detach().numpy()
+            args['losses_test_res'].append(loss_test_res)
 
-        # logger.info('Loss (Testing): {:.5f}'.format(loss_whole_trajectory.item()))
 
-        t_train = plotting_reference_data['t_train']
-        t_test = plotting_reference_data['t_test']
-        z_ref_train = plotting_reference_data['z_ref_train']
-        z_ref_test = plotting_reference_data['z_ref_test']
-        results_directory = plotting_reference_data['results_directory']
-
+        # Now determine the loss over the whole trajectory
+        # This happens for residual optimisation or optimisation
+        # over the whole trajectory
         model.trajectory_mode()
         model.set_trajectory_variables(z0=z_ref_train[0], t=t_train)
         if isinstance(model, Hybrid_FMU):
@@ -681,40 +659,55 @@ def train(model:Hybrid_FMU or Hybrid_Python,
         loss_train = _evaluate_reg(torch.tensor(pred_train), torch.tensor(z_ref_train), F.mse_loss)
         loss_test = _evaluate_reg(torch.tensor(pred_test), torch.tensor(z_ref_test), F.mse_loss)
 
-        losses_train.append(loss_train)
-        losses_test.append(loss_test)
-        accuracies_train.append(0)
-        accuracies_test.append(0)
+        args['losses_train'].append(loss_train)
+        args['losses_test'].append(loss_test)
+        args['accuracies_train'].append(0)
+        args['accuracies_test'].append(0)
 
-        logger.info('Loss (Training): {:.5f}'.format(loss_train))
-        logger.info('Loss (Testing): {:.5f}'.format(loss_test))
+        if residual:
+            logger.info('Epoch: {:04d}/{}    Loss (TrajTrain): {:.5e}    Loss (TrajTest): {:.5e}    Loss (ResTrain): {:.5e}    Loss (ResTest): {:.5e}'.format(
+                            epoch,
+                            args['epochs'],
+                            loss_train,
+                            loss_test,
+                            loss_train_res,
+                            loss_test_res
+                         ))
+            # logger.info('Loss (Residual, Training): {:.5f}'.format(loss_res))
+            # logger.info('Loss (Residual, Testing): {:.5f}'.format(loss_res))
+        else:
+            logger.info(f'Loss (TrajTrain): {loss_train:.5f}    Loss (TrajTest): {loss_test:.5f}')
 
-        if epoch % eval_freq == 0:
+        # logger.info('Loss (Trajectory, Training): {:.5f}'.format(loss_train))
+        # logger.info('Loss (Trajectory, Testing): {:.5f}'.format(loss_test))
 
-            result_plot_multi_dim('Custom', 'VdP', os.path.join(results_directory, f'Epoch {epoch}.png'),
+        if epoch % gS['eval_freq'] == 0:
+            result_plot_multi_dim(mD['name'], pD['name'], os.path.join(results_directory, f'Epoch {epoch}.png'),
                         t_train, pred_train, t_test, pred_test,
                         np.hstack((t_train, t_test)), np.vstack((z_ref_train, z_ref_test)))
             visualise_wb([p for p in model.parameters()], results_directory, f'values_epoch_{epoch}')
 
-        if losses_test[-1] < best_loss:
-            best_loss = losses_test[-1]
-            torch.save({'epoch': epoch,
-                        'model_state_dict': model.state_dict(),
-                        'loss': losses_train[-1],
-                        'loss_test': losses_test[-1],
-            }, os.path.join(plotting_reference_data['results_directory'], 'best_params.pt'))
+        if args['losses_test'][-1] < args['best_loss']:
+            args['best_loss'] = args['losses_test'][-1]
+            if gS['save_parameters']:
+                torch.save({'epoch': epoch,
+                            'model_state_dict': model.state_dict(),
+                            'loss': args['losses_train'][-1],
+                            'loss_test': args['losses_test'][-1],
+                }, os.path.join(args['results_directory'], 'best_params.pt'))
 
-        if cooling:
+        if oD['cooling']:
             optimizer.cooling_step()
 
-        if np.isnan(losses_train[-1]):
-            losses_train = losses_train + [np.inf]*(epochs-epoch-1)
-            losses_test = losses_test + [np.inf]*(epochs-epoch-1)
-            accuracies_train = accuracies_train + [np.inf]*(epochs-epoch-1)
-            accuracies_test = accuracies_test + [np.inf]*(epochs-epoch-1)
-            break
+        # if np.isnan(losses_train[-1]):
+        #     losses_train = losses_train + [np.inf]*(epochs-epoch-1)
+        #     losses_test = losses_test + [np.inf]*(epochs-epoch-1)
+        #     accuracies_train = accuracies_train + [np.inf]*(epochs-epoch-1)
+        #     accuracies_test = accuracies_test + [np.inf]*(epochs-epoch-1)
+        #     break
 
-    return accuracies_train, accuracies_test, losses_train, losses_test
+    # return accuracies_train, accuracies_test, losses_train, losses_test
+    return
 
 def determine_device(device_type, use_multiprocessing):
     if device_type == 'cuda' and not torch.cuda.is_available():
