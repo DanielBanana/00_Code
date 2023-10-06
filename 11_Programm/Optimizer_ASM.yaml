@@ -1,0 +1,16 @@
+name: ASM # Adjoint State Method
+lambda_: 0 # Gradient regularisation
+batching: true # needed for clean_batching
+n_batches: 200
+batch_size: 50
+clean_batching: true # replaces regular bathing
+clean_n_batches: 20
+method: Adam # BFSG, CG, SLSQP, Adam
+tol: 0.00001 # Only for BFGS, CG, SLSQP
+adam_eta: 0.1
+adam_beta1: 0.9
+adam_beta2: 0.999
+adam_eps: 0.00000001
+epochs: 1000
+residual_training: true
+epochs_res: 1000

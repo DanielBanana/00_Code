@@ -1,0 +1,14 @@
+name: CBO
+alpha: 50.0
+l: 1.0
+eps: 0.00001
+dt: 0.1
+particles: 50
+sigma: 1.0
+batch_size: 1000
+particles_batch_size: 20
+partial_update: true
+anisotropic: true
+epochs: 1000
+residual_training: true
+epochs_res: 1000

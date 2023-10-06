@@ -1,0 +1,21 @@
+name: VdP # Van der Pol Oscillator
+file: VdP
+type: regression
+integration_parameters:
+  start: 0.0
+  end: 20.0
+  steps: 10001
+variables:
+  mu: 8.53
+  kappa: 1.0
+  mass: 1.0
+ic: [1.0, 0.0]
+inputs: 2
+outputs: 1
+stimulate: false
+aug_state: false
+n_aug_states: 2
+simple: false
+use_fmu: false
+fmu_directory: VdP_FMU
+

@@ -1,0 +1,9 @@
+results_directory: results
+plot_loss: true
+plot_prediction: true
+plot_parameters: true
+save_nn_parameters: true
+log_process: true
+device: cpu
+processes: 1
+eval_freq: 10
