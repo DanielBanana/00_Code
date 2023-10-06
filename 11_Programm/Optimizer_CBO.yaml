@@ -12,3 +12,4 @@ anisotropic: true
 epochs: 1000
 residual_training: true
 epochs_res: 1000
+cooling: false
