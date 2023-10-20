@@ -1,1 +1,33 @@
-name: CSTR # Continiuously stirred reactor tank
+name: CSTR # Continuously stirred reactor tank
+file: 'CSTR_input.fmu'
+type: regression
+integration_parameters:
+  start: 0.0
+  end: 10.0
+  steps: 1001
+variables: # For the python implementation
+  q: 100  # L/min
+  cA_i: 1  # mol/L
+  T_i: 350  # K
+  V: 100  # L
+  rho: 1000 # g/L
+  C: 0.239 # J/(g K)
+  Hr: -50000  # J/(g K)
+  E_over_R: 8750  # K
+  k0: 72000000000  # 1/min
+  UA: 50000  # J/(min K)
+  Tc: 300  # K
+initial_conditions:
+  T: 350
+  cA: 0.5
+inputs: 2
+outputs: 1
+relevant_output_dims_res: [0,1] # Should be a list of indices indicating the dimensions
+# in which the model is deficient in. I.e. for the VdP Problem where we approximate the
+# damping term in the second differential equation. We ignore the dimensions because here
+# the reduced model is already correct. -> relevant_output_dims_res = [1] and not relevant_output_dims_res = [0,1]
+stimulate: false
+aug_state: false
+n_aug_states: 2
+simple: false
+fmu: true
