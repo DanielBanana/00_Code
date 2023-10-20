@@ -1,5 +1,6 @@
 import datetime
 import jax
+from jax import flatten_util
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 from matplotlib.colors import SymLogNorm
@@ -44,7 +45,8 @@ def result_plot_multi_dim(model_name, dataset_name, plot_path,
     fig, axes = plt.subplots(output_dims, 2)
 
     for out_dim in range(output_dims):
-
+        value_range = np.max(output_reference[:,out_dim]) - np.min(output_reference[:,out_dim])
+        axes[out_dim, 0].set_ylim(bottom=np.min(output_reference[:,out_dim])-value_range, top=np.max(output_reference[:,out_dim])+value_range)
         axes[out_dim, 0].plot(input_reference, output_reference[:,out_dim], label='Reference')
         if scatter:
             axes[out_dim, 0].scatter(input_train, output_train[:,out_dim], label='Prediction')
@@ -55,6 +57,7 @@ def result_plot_multi_dim(model_name, dataset_name, plot_path,
         axes[out_dim, 0].set_ylabel('y')
         axes[out_dim, 0].set_title(f'Variable {out_dim+1} - Train')
 
+        axes[out_dim, 1].set_ylim(bottom=np.min(output_reference[:,out_dim])-value_range, top=np.max(output_reference[:,out_dim])+value_range)
         axes[out_dim, 1].plot(input_reference, output_reference[:,out_dim], label='Reference')
         if scatter:
             axes[out_dim, 1].scatter(input_test, output_test[:,out_dim], label='Prediction')
@@ -75,7 +78,7 @@ def build_plot(epochs, model_name, dataset_name, plot_path,
     plt.rcParams['figure.figsize'] = (20, 10)
     plt.rcParams['font.size'] = 25
 
-    epochs_range = np.arange(1, epochs + 1, dtype=int)
+    epochs_range = np.arange(0, epochs, dtype=int)
 
     plt.clf()
     fig, (ax1, ax2, ax3) = plt.subplots(1, 3)
@@ -86,6 +89,7 @@ def build_plot(epochs, model_name, dataset_name, plot_path,
     ax1.set_xlabel('epoch')
     ax1.set_ylabel('accuracy')
     ax1.set_title('Accuracy')
+    ax1.set_ylim(bottom=0.0, top=1.0)
 
     ax2.plot(epochs_range, train_loss, label='train')
     ax2.plot(epochs_range, test_loss, label='test')
@@ -93,6 +97,7 @@ def build_plot(epochs, model_name, dataset_name, plot_path,
     ax2.set_xlabel('epoch')
     ax2.set_ylabel('loss')
     ax2.set_title('Loss')
+    ax2.set_ylim(bottom=0.0, top=1e2)
 
     ax3.plot(epochs_range, train_loss, label='train')
     ax3.plot(epochs_range, test_loss, label='test')
@@ -101,12 +106,13 @@ def build_plot(epochs, model_name, dataset_name, plot_path,
     ax3.set_xlabel('epoch')
     ax3.set_ylabel('loss')
     ax3.set_title('Loss')
+    ax3.set_ylim(bottom=1e-4, top=1e4)
 
     plt.suptitle(f'{model_name} @ {dataset_name}')
     plt.savefig(plot_path)
     plt.close(fig)
 
-def visualise_wb(wb, plot_directory, name_addon, plot_individual=False):
+def visualise_wb(wb, plot_directory, name, plot_individual=False):
     fig_all = plt.figure()
     fig_all.supxlabel('Layers')
     fig_all.supylabel('Biases   &   Weights')
@@ -124,14 +130,14 @@ def visualise_wb(wb, plot_directory, name_addon, plot_individual=False):
                 minimum = layer.detach().numpy().min()
             counter = i
         ax_all = fig_all.subplots(2, int((counter+1)/2))
-    elif isinstance(wb, FrozenDict):
+    elif isinstance(wb, FrozenDict) or isinstance(wb, dict):
         # Parameters are from FLAX/JAX
         ax_all = fig_all.subplots(2, len(wb['params'].keys()), sharex='col')
         flat, _ = flatten_util.ravel_pytree(wb)
         flat = np.array(flat)
         minimum = np.min(flat)
         maximum = np.max(flat)
-    normalizer = SymLogNorm(linthresh=1.0, vmin=minimum, vmax=maximum)
+    normalizer = SymLogNorm(linthresh=1, vmin=-10, vmax=10)
     im = cm.ScalarMappable(cmap=cmap, norm=normalizer)
 
     if isinstance(wb, list):
@@ -177,9 +183,9 @@ def visualise_wb(wb, plot_directory, name_addon, plot_individual=False):
 
             if plot_individual:
                 fig.colorbar(img)
-                fig.savefig(os.path.join(plot_directory, f'layer_{j}_{part_name}_{name_addon}.png'))
+                fig.savefig(os.path.join(plot_directory, f'layer_{j}_{part_name}_{name}.png'))
                 plt.close(fig)
-    elif isinstance(wb, FrozenDict):
+    elif isinstance(wb, FrozenDict) or isinstance(wb, dict):
         for j, layer in enumerate(wb['params']):
             for i, part in enumerate(wb['params'][layer]):
                 matrix = np.array(wb['params'][layer][part])
@@ -213,12 +219,13 @@ def visualise_wb(wb, plot_directory, name_addon, plot_individual=False):
 
                 if plot_individual:
                     fig.colorbar(img)
-                    fig.savefig(os.path.join(plot_directory, f'{name_addon}_{layer}_{part}.png'))
+                    fig.savefig(os.path.join(plot_directory, f'{name}_{layer}_{part}.png'))
                     plt.close(fig)
 
     fig_all.colorbar(im, ax=np.ravel(ax_all).tolist())
-    fig_all.savefig(os.path.join(plot_directory, f'all_{name_addon}.png'))
+    fig_all.savefig(os.path.join(plot_directory, f'{name}.png'))
     plt.close(fig_all)
+    return
 
 def create_results_directory(directory, results_directory_name=None):
     if results_directory_name is None:
@@ -286,6 +293,11 @@ def create_residual_references(z_ref, t, variables, ode_res):
     residual = z_dot - v_ode(z_ref[:-1], t[:-1], variables)
     return residual
 
+def create_residuals_fmu(z_ref, t, z_dot_fmu):
+    z_dot = (z_ref[1:] - z_ref[:-1])/(t[1:] - t[:-1]).reshape(-1,1)
+    residual = z_dot - z_dot_fmu
+    return np.asarray(residual)
+
 def create_residual_reference_solution(t_train, z_ref_train, t_test, z_ref_test, variables, ode_res):
 
     # CREATE RESIDUALS FROM TRAJECTORIES
@@ -298,3 +310,27 @@ def create_residual_reference_solution(t_train, z_ref_train, t_test, z_ref_test,
     test_residual_inputs = z_ref_test[:-1]
 
     return train_residual_inputs, train_residual_outputs, test_residual_inputs, test_residual_outputs
+
+def create_residual_reference_dataset_fmu(t_train, z_ref_train, z_train_dot, t_test, z_ref_test, z_test_dot):
+    # CREATE RESIDUALS FROM TRAJECTORIES
+    train_residual_outputs = np.asarray(create_residuals_fmu(z_ref_train, t_train, z_train_dot))
+    # train_residual_outputs = train_residual_outputs.reshape(-1, 1) # We prefer it if the output has a two dimensional shape (n_samples, output_dim) even if the output_dim is 1
+    train_residual_inputs = z_ref_train[:-1]
+
+    test_residual_outputs = np.asarray(create_residuals_fmu(z_ref_test, t_test, z_test_dot))
+    # test_residual_outputs = test_residual_outputs.reshape(-1, 1)
+    test_residual_inputs = z_ref_test[:-1]
+
+    return train_residual_inputs, train_residual_outputs, test_residual_inputs, test_residual_outputs
+
+def torch_to_flax(parameters):
+    flax_parameters = {'params':{}}
+    for i, p in enumerate(parameters):
+        # even entries are the weights, odd the biases
+        if i % 2 == 0:
+            flax_parameters['params'][f'layers_{i}'] = {}
+            flax_parameters['params'][f'layers_{i}']['kernel'] = p.detach().numpy()
+        else:
+            flax_parameters['params'][f'layers_{i-1}']['bias'] = p.detach().numpy()
+
+    return flax_parameters
