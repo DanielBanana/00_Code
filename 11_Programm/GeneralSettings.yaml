@@ -1,12 +1,16 @@
-results_directory: results
+results_directory: RES_TRAJ_CBO_FMU
 plot_loss: true
 plot_prediction: true
 plot_parameters: true
 save_parameters: true
+save_name: best_parameters
 load_parameters: false # Whether or not to restore old parmeters from a checkpoint
-load_name: results # Directory from which old parameters should be restored
+load_name: best_parameters # Name under whicht the parameters get loaded from.
+# Incase of CBO this determines a file name "load_name.pt"
+# Incase of ASM this determines a directory name "load_name" under which parameter checkpoints
+# get saved. The loader takes the latest result from that folder which is the best set of parameters.
 log_process: true
 device: cpu
 use_multiprocessing: false
 processes: 1
-eval_freq: 25
+eval_freq: 5

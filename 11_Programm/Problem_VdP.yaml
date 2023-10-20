@@ -1,21 +1,27 @@
 name: VdP # Van der Pol Oscillator
-file: VdP
+file: 'Van_der_Pol_damping_input.fmu'
 type: regression
 integration_parameters:
   start: 0.0
-  end: 20.0
-  steps: 10001
+  end: 10.0
+  steps: 1001
 variables:
-  mu: 8.53
+  mu: 3
   kappa: 1.0
   mass: 1.0
-ic: [1.0, 0.0]
+initial_conditions:
+  u: 1.0
+  v: 0.0
 inputs: 2
 outputs: 1
+relevant_output_dims_res: [1] # Should be a list of indices indicating the dimensions
+# in which the model is deficient in. I.e. for the VdP Problem where we approximate the
+# damping term in the second differential equation. We ignore the dimensions because here
+# the reduced model is already correct. -> relevant_output_dims_res = [1] and not relevant_output_dims_res = [0,1]
 stimulate: false
 aug_state: false
 n_aug_states: 2
 simple: false
-fmu: false
-fmu_directory: VdP_FMU
+fmu: true
+
 
