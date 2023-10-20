@@ -2,8 +2,10 @@ import torch
 import torch.nn as nn
 
 import numpy as np
-
+import copy
 from copy import deepcopy
+from types import SimpleNamespace
+import ctypes
 
 
 class Particle(nn.Module):
@@ -17,20 +19,35 @@ class Particle(nn.Module):
         self.residual = residual
 
         if fmu:
-            self.pointers = model.fmu_model.get_pointers()
-            fmu_model = model.fmu_model
-            model.fmu_model = None
-            self.model = deepcopy(model)
+            pointers = SimpleNamespace(
+            x=np.zeros(2),
+            dx=np.zeros(2),
+            z=np.zeros(0),
+            )
+            pointers._px = pointers.x.ctypes.data_as(
+                ctypes.POINTER(ctypes.c_double)
+            )
+            pointers._pdx = pointers.dx.ctypes.data_as(
+                ctypes.POINTER(ctypes.c_double)
+            )
+            pointers._pz = pointers.z.ctypes.data_as(
+                ctypes.POINTER(ctypes.c_double)
+            )
+            self.pointers = pointers
+            fmu_model = copy.copy(model.fmu_model)
+            augment_model = deepcopy(model.augment_model)
+            # model.fmu_model = None
+            # self.model = copy.copy(model)
             if restore:
                 for p in self.model.parameters():
                     with torch.no_grad():
                         p.copy_(p + 0.01*torch.randn_like(p))
             else:
-                for p in self.model.parameters():
+                for p in augment_model.parameters():
                     with torch.no_grad():
                         p.copy_(torch.randn_like(p))
-            self.model.fmu_model = fmu_model
-            model.fmu_model = fmu_model
+            self.model = type(model)(fmu_model, augment_model, model.x0, model.t)
+
         else:
             self.model = deepcopy(model)
             model_copy = deepcopy(model.augment_model.model)
@@ -46,19 +63,14 @@ class Particle(nn.Module):
             self.model.augment_model.model = model_copy
 
     def forward(self, X):
-        if self.fmu:
-            output = self.model(self.pointers)
+        if self.residual:
+            return self.model(X)
+        else:
+            output = self.model()
             if type(output) == np.ndarray:
                 output = torch.tensor(output)
             return output
-        else:
-            if self.residual:
-                return self.model(X)
-            else:
-                output = self.model()
-                if type(output) == np.ndarray:
-                    output = torch.tensor(output)
-                return output
+
     def get_params(self):
         """
         :return: the underlying models' parameters stacked into a 1d-tensor.
