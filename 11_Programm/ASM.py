@@ -22,12 +22,12 @@ import logging
 # Only Works if file gets called from 00_Code
 sys.path.insert(0, os.getcwd())
 from plot_results import plot_results, plot_losses, get_file_path
-from utils import build_plot, result_plot_multi_dim, create_results_directory, create_results_subdirectories, create_doe_experiments, create_experiment_directory
+from utils import build_plot, result_plot_multi_dim, create_results_directory, create_results_subdirectories, create_doe_experiments, create_experiment_directory, visualise_wb
 import yaml
 
 '''
 Naming Conventions:
-    z       refers to the state
+    x       refers to the state
     x       refers to the location variable of the state
     v       refers to the velocity variable of the state
     t       refers to time
@@ -70,217 +70,214 @@ class AdamOptim():
         p = p - self.eta*(m_dp_corr/(np.sqrt(v_dp_corr)+self.epsilon))
         return p
 
-@jit
-def ode(z, t, ode_parameters):
-    '''Calculates the right hand side of the original ODE.'''
-    kappa = ode_parameters[0]
-    mu = ode_parameters[1]
-    mass = ode_parameters[2]
-    derivative = jnp.array([z[1],
-                           -kappa*z[0]/mass + (mu*(1-z[0]**2)*z[1])/mass])
-    return derivative
-
-@jit
-def ode_res(z, t, ode_parameters):
-    '''Calculates the right hand side of the deficient ODE.'''
-    kappa = ode_parameters[0]
-    mu = ode_parameters[1]
-    mass = ode_parameters[2]
-    derivative = jnp.array([z[1],
-                           -kappa*z[0]/mass])
-    return derivative
-
-@jit
-def hybrid_ode(z, t, ode_parameters, nn_parameters):
-    '''Calculates the right hand side of the hybrid ODE, where
-    the damping term is replaced by the neural network'''
-    kappa = ode_parameters[0]
-    mu = ode_parameters[1]
-    mass = ode_parameters[2]
-    derivative = jnp.array([jnp.array((z[1],)),
-                            jnp.array((-kappa*z[0]/mass,)) + jitted_neural_network(nn_parameters, z)]).flatten()
-    return derivative
-
-@jit
-def ode_stim(z, t, ode_parameters):
-    '''Calculates the right hand side of the original ODE.'''
-    kappa = ode_parameters[0]
-    mu = ode_parameters[1]
-    mass = ode_parameters[2]
-    derivative = jnp.array([z[1],
-                           -kappa*z[0]/mass + (mu*(1-z[0]**2)*z[1])/mass + 1.2*jnp.cos(0.628*t)])
-    return derivative
-
-@jit
-def ode_stim_res(z, t, ode_parameters):
-    '''Calculates the right hand side of the original ODE.'''
-    kappa = ode_parameters[0]
-    mu = ode_parameters[1]
-    mass = ode_parameters[2]
-    derivative = jnp.array([z[1],
-                           -kappa*z[0]/mass + 1.2*jnp.cos(0.628*t)])
-    return derivative
-
-@jit
-def hybrid_ode_stim(z, t, ode_parameters, nn_parameters):
-    '''Calculates the right hand side of the hybrid ODE, where
-    the damping term is replaced by the neural network'''
-    kappa = ode_parameters[0]
-    mu = ode_parameters[1]
-    mass = ode_parameters[2]
-    derivative = jnp.array([jnp.array((z[1],)),
-                            jnp.array((-kappa*z[0]/mass,)) + jitted_neural_network(nn_parameters, z) + jnp.array(1.2*jnp.cos(0.628*t))] ).flatten()
-    return derivative
-
-@jit
-def ode_aug(z, t, ode_parameters):
-    '''Calculates the right hand side of the original ODE.'''
-    kappa = ode_parameters[0]
-    mu = ode_parameters[1]
-    mass = ode_parameters[2]
-    derivative = [z[1],
-                 -kappa*z[0]/mass + (mu*(1-z[0]**2)*z[1])/mass]
-    derivative += [z[i] for i in range(2, z.shape[0])]
-
-    return jnp.array(derivative)
-
-@jit
-def hybrid_ode_aug(z, t, ode_parameters, nn_parameters):
-    '''Calculates the right hand side of the hybrid ODE, where
-    the damping term is replaced by the neural network'''
-    kappa = ode_parameters[0]
-    mu = ode_parameters[1]
-    mass = ode_parameters[2]
-    derivative = [jnp.array((z[1],)),
-                  jnp.array((-kappa*z[0]/mass,)) + jitted_neural_network(nn_parameters, z)]
-    derivative += [[z[i]] for i in range(2, z.shape[0])]
-    derivative = jnp.array(derivative).flatten()
-    return derivative
-
-@jit
-def ode_simple(z, t, ode_parameters):
-    '''Calculates the right hand side of the original ODE.'''
-    kappa = ode_parameters[0]
-    mu = ode_parameters[1]
-    mass = ode_parameters[2]
-    derivative = jnp.array([-0.1 * z[0] - 1 * z[1],
-                            1 * z[0] - 0.1 * z[1]])
-    return derivative
-
-@jit
-def hybrid_ode_simple(z, t, ode_parameters, nn_parameters):
-    '''Calculates the right hand side of the hybrid ODE, where
-    the damping term is replaced by the neural network'''
-    kappa = ode_parameters[0]
-    mu = ode_parameters[1]
-    mass = ode_parameters[2]
-    derivative = jnp.array([jnp.array((-0.1 * z[0] - 1 * z[1],)),
-                            jitted_neural_network(nn_parameters, z)]).flatten()
-    return derivative
-
-@jit
-def adjoint_f(adj, z, z_ref, t, ode_parameters, nn_parameters):
-    '''Calculates the right hand side of the adjoint system.'''
-    df_dz = jax.jacobian(hybrid_ode, argnums=0)(z, t, ode_parameters, nn_parameters)
-    dg_dz = jax.grad(g, argnums=0)(z, z_ref, ode_parameters, nn_parameters)
-    d_adj = - df_dz.T @ adj - dg_dz
-    return d_adj
-
-def g(z, z_ref, ode_parameters, nn_parameters):
-    '''Calculates the inner part of the loss function.
-
-    This function can either take individual floats for z
-    and z_ref or whole numpy arrays'''
-    return jnp.mean(0.5 * (z_ref - z)**2, axis = 0)
-
-@jit
-def J(z, z_ref, ode_parameters, nn_parameters):
-    '''Calculates the complete loss of a trajectory w.r.t. a reference trajectory'''
-    return jnp.mean(g(z, z_ref, ode_parameters, nn_parameters))
-
-@jit
-def J_residual(inputs, outputs, nn_parameters):
-    def squared_error(input, output):
-        pred = jitted_neural_network(nn_parameters, input)
-        return (output-pred)**2
-    return jnp.mean(jax.vmap(squared_error)(inputs, outputs), axis=0)[0]
-
-def create_residuals(z_ref, t, ode_parameters):
-    z_dot = (z_ref[1:] - z_ref[:-1])/(t[1:] - t[:-1]).reshape(-1,1)
-    v_ode = jax.vmap(lambda z_ref, t, ode_parameters: ode_res(z_ref, t, ode_parameters), in_axes=(0, 0, None))
-    residual = z_dot - v_ode(z_ref[:-1], t[:-1], ode_parameters)
-    return residual
+# @jit
+# def ode(x, t, variables):
+#     '''Calculates the right hand side of the original ODE.'''
+#     kappa = variables[0]
+#     mu = variables[1]
+#     mass = variables[2]
+#     derivative = jnp.array([x[1],
+#                            -kappa*x[0]/mass + (mu*(1-x[0]**2)*x[1])/mass])
+#     return derivative
 
 # @jit
-# def euler_step(z, t, i, ode_parameters):
-#     dt = t[i+1] - t[i]
-#     return z[i] + dt * ode(z[i], t[i], ode_parameters)
+# def ode_res(x, t, variables):
+#     '''Calculates the right hand side of the deficient ODE.'''
+#     kappa = variables[0]
+#     mu = variables[1]
+#     mass = variables[2]
+#     derivative = jnp.array([x[1],
+#                            -kappa*x[0]/mass])
+#     return derivative
 
-def f_euler(z0, t, ode_parameters):
+# @jit
+# def hybrid_ode(x, t, variables, parameters):
+#     '''Calculates the right hand side of the hybrid ODE, where
+#     the damping term is replaced by the neural network'''
+#     kappa = variables[0]
+#     mu = variables[1]
+#     mass = variables[2]
+#     derivative = jnp.array([jnp.array((x[1],)),
+#                             jnp.array((-kappa*x[0]/mass,)) + jitted_neural_network(parameters, x)]).flatten()
+#     return derivative
+
+# @jit
+# def ode_stim(x, t, variables):
+#     '''Calculates the right hand side of the original ODE.'''
+#     kappa = variables[0]
+#     mu = variables[1]
+#     mass = variables[2]
+#     derivative = jnp.array([x[1],
+#                            -kappa*x[0]/mass + (mu*(1-x[0]**2)*x[1])/mass + 1.2*jnp.cos(0.628*t)])
+#     return derivative
+
+# @jit
+# def ode_stim_res(x, t, variables):
+#     '''Calculates the right hand side of the original ODE.'''
+#     kappa = variables[0]
+#     mu = variables[1]
+#     mass = variables[2]
+#     derivative = jnp.array([x[1],
+#                            -kappa*x[0]/mass + 1.2*jnp.cos(0.628*t)])
+#     return derivative
+
+# @jit
+# def hybrid_ode_stim(x, t, variables, parameters):
+#     '''Calculates the right hand side of the hybrid ODE, where
+#     the damping term is replaced by the neural network'''
+#     kappa = variables[0]
+#     mu = variables[1]
+#     mass = variables[2]
+#     derivative = jnp.array([jnp.array((x[1],)),
+#                             jnp.array((-kappa*x[0]/mass,)) + jitted_neural_network(parameters, x) + jnp.array(1.2*jnp.cos(0.628*t))] ).flatten()
+#     return derivative
+
+# @jit
+# def ode_aug(x, t, variables):
+#     '''Calculates the right hand side of the original ODE.'''
+#     kappa = variables[0]
+#     mu = variables[1]
+#     mass = variables[2]
+#     derivative = [x[1],
+#                  -kappa*x[0]/mass + (mu*(1-x[0]**2)*x[1])/mass]
+#     derivative += [x[i] for i in range(2, x.shape[0])]
+
+#     return jnp.array(derivative)
+
+# @jit
+# def hybrid_ode_aug(x, t, variables, parameters):
+#     '''Calculates the right hand side of the hybrid ODE, where
+#     the damping term is replaced by the neural network'''
+#     kappa = variables[0]
+#     mu = variables[1]
+#     mass = variables[2]
+#     derivative = [jnp.array((x[1],)),
+#                   jnp.array((-kappa*x[0]/mass,)) + jitted_neural_network(parameters, x)]
+#     derivative += [[x[i]] for i in range(2, x.shape[0])]
+#     derivative = jnp.array(derivative).flatten()
+#     return derivative
+
+# @jit
+# def ode_simple(x, t, variables):
+#     '''Calculates the right hand side of the original ODE.'''
+#     kappa = variables[0]
+#     mu = variables[1]
+#     mass = variables[2]
+#     derivative = jnp.array([-0.1 * x[0] - 1 * x[1],
+#                             1 * x[0] - 0.1 * x[1]])
+#     return derivative
+
+# @jit
+# def hybrid_ode_simple(x, t, variables, parameters):
+#     '''Calculates the right hand side of the hybrid ODE, where
+#     the damping term is replaced by the neural network'''
+#     kappa = variables[0]
+#     mu = variables[1]
+#     mass = variables[2]
+#     derivative = jnp.array([jnp.array((-0.1 * x[0] - 1 * x[1],)),
+#                             jitted_neural_network(parameters, x)]).flatten()
+#     return derivative
+
+
+def adjoint_f(adj, x, x_ref, t, variables, parameters, hybrid_ode, model_function):
+    '''Calculates the right hand side of the adjoint system.'''
+    df_dx = jax.jacobian(hybrid_ode, argnums=0)(x, t, variables, parameters, model_function)
+    dg_dx = jax.grad(g, argnums=0)(x, x_ref, parameters)
+    d_adj = - df_dx.T @ adj - dg_dx
+    return d_adj
+
+@jit
+def adjoint_fmu(adj, x, x_ref, t, parameters, df_dx_at_t):
+    '''Calculates the right hand side of the adjoint system.'''
+    dg_dx = jax.grad(g, argnums=0)(x, x_ref, parameters)
+    d_adj = - df_dx_at_t.T @ adj - dg_dx
+    return d_adj
+
+
+def g(x, x_ref, parameters):
+    '''Calculates the inner part of the loss function.
+
+    This function can either take individual floats for x
+    and x_ref or whole numpy arrays'''
+    return jnp.mean(0.5 * (x_ref - x)**2, axis = 0)
+
+@jit
+def J(x, x_ref, parameters):
+    '''Calculates the complete loss of a trajectory w.r.t. a reference trajectory'''
+    return jnp.mean(g(x, x_ref, parameters))
+
+
+def create_residuals(x_ref, t, variables):
+    x_dot = (x_ref[1:] - x_ref[:-1])/(t[1:] - t[:-1]).reshape(-1,1)
+    v_ode = jax.vmap(lambda x_ref, t, variables: ode_res(x_ref, t, variables), in_axes=(0, 0, None))
+    residual = x_dot - v_ode(x_ref[:-1], t[:-1], variables)
+    return residual
+
+
+def f_euler(x0, t, variables):
     '''Applies forward Euler to the original ODE and returns the trajectory'''
-    z = jnp.zeros((t.shape[0], z0.shape[0]))
-    z = z.at[0].set(z0)
+    x = jnp.zeros((t.shape[0], x0.shape[0]))
+    x = x.at[0].set(x0)
     i = jnp.asarray(range(t.shape[0]))
-    euler_body_func = partial(f_step, t=t, ode_parameters = ode_parameters)
-    final, result = lax.scan(euler_body_func, z0, i)
-    z = z.at[1:].set(result[:-1])
-    # z[1:] = result[:-1]
+    euler_body_func = partial(f_step, t=t, variables = variables)
+    final, result = lax.scan(euler_body_func, x0, i)
+    x = x.at[1:].set(result[:-1])
+    return x
 
-    # for i in range(len(t)-1):
-    #     dt = t[i+1] - t[i]
-    #     z[i+1] = z[i] + dt * ode(z[i], t[i], ode_parameters)
-    #     # z[i+1] = euler_step(z, t, i, ode_parameters)
-    return z
-
-def f_step(prev_z, i, t, ode_parameters):
+def f_step(prev_x, i, t, variables):
     t = jnp.asarray(t)
     dt = t[i+1] - t[i]
-    next_z = prev_z + dt * ode(prev_z, t[i], ode_parameters)
-    return next_z, next_z
+    next_x = prev_x + dt * ode(prev_x, t[i], variables)
+    return next_x, next_x
 
-def hybrid_euler(z0, t, ode_parameters, nn_parameters):
+def hybrid_euler(x0, t, variables, parameters, hybrid_ode, model_function):
     '''Applies forward Euler to the hybrid ODE and returns the trajectory'''
-    z = jnp.zeros((t.shape[0], z0.shape[0]))
-    z = z.at[0].set(z0)
+    x = jnp.zeros((t.shape[0], x0.shape[0]))
+    x = x.at[0].set(x0)
     i = jnp.asarray(range(t.shape[0]))
     # We can replace the loop over the time by a lax.scan this is 3 times as fast: 0.32-0.26 -> 0.11-0.9
-    euler_body_func = partial(hybrid_step, t=t, ode_parameters=ode_parameters, nn_parameters=nn_parameters)
-    final, result = lax.scan(euler_body_func, z0, i)
-    z = z.at[1:].set(result[:-1])
+    euler_body_func = partial(hybrid_step, t=t, variables=variables, parameters=parameters, hybrid_ode=hybrid_ode, model_function=model_function)
+    final, result = lax.scan(euler_body_func, x0, i)
+    x = x.at[1:].set(result[:-1])
     # for i in range(len(t)-1):
     #     dt = t[i+1] - t[i]
-    #     z[i+1] = z[i] + dt * hybrid_ode(z[i], t[i], ode_parameters, nn_parameters)
-    return z
+    #     x[i+1] = x[i] + dt * hybrid_ode(x[i], t[i], variables, parameters)
+    return x
 
-def hybrid_step(prev_z, i, t, ode_parameters, nn_parameters):
+def hybrid_step(prev_x, i, t, variables, parameters, hybrid_ode, model_function):
     t = jnp.asarray(t)
     dt = t[i+1] - t[i]
-    next_z = prev_z + dt * hybrid_ode(prev_z, t[i], ode_parameters, nn_parameters)
-    return next_z, next_z
+    next_x = prev_x + dt * hybrid_ode(prev_x, t[i], variables, parameters, model_function)
+    return next_x, next_x
 
-def adjoint_euler(a0, z, z_ref, t, ode_parameters, nn_parameters):
+def adjoint_euler(a0, x, x_ref, t, variables, parameters, hybrid_ode, model_function):
     '''Applies forward Euler to the adjoint ODE and returns the trajectory'''
     a = jnp.zeros((t.shape[0], a0.shape[0]))
     a = a.at[0].set(a0)
     i = jnp.asarray(range(t.shape[0]))
     # We can replace the loop over the time by a lax.scan this is 3 times as fast: 0.32-0.26 -> 0.11-0.9
-    euler_body_func = partial(adjoint_step, z=z, z_ref=z_ref, t=t, ode_parameters=ode_parameters,nn_parameters=nn_parameters)
+    euler_body_func = partial(adjoint_step, x=x, x_ref=x_ref, t=t, variables=variables,parameters=parameters, hybrid_ode=hybrid_ode, model_function=model_function)
     final, result = lax.scan(euler_body_func, a0, i)
     a = a.at[1:].set(result[:-1])
-
-    # for i in range(len(t)-1):
-    #     dt = t[i+1] - t[i]
-    #     d_adj = adjoint_f(a[i], z[i], z_ref[i], t[i], ode_parameters, nn_parameters)
-    #     a[i+1] = a[i] + dt * d_adj
     return a
 
-def adjoint_step(prev_a, i, z, z_ref, t, ode_parameters, nn_parameters):
+def adjoint_step(prev_a, i, x, x_ref, t, variables, parameters, hybrid_ode, model_function):
     t = jnp.asarray(t)
-    z = jnp.asarray(z)
-    z_ref = jnp.asarray(z_ref)
+    x = jnp.asarray(x)
+    x_ref = jnp.asarray(x_ref)
     dt = t[i+1]-t[i]
-    next_a = prev_a + dt * adjoint_f(prev_a, z[i], z_ref[i], t[i], ode_parameters, nn_parameters)
+    next_a = prev_a + dt * adjoint_f(prev_a, x[i], x_ref[i], t[i], variables, parameters, hybrid_ode, model_function)
     return next_a, next_a
+
+def adjoint_euler_fmu(a0, z, z_ref, t, optimisation_parameters, df_dz_trajectory):
+    '''Applies forward Euler to the adjoint ODE and returns the trajectory'''
+    a = np.zeros((t.shape[0], 2))
+    a[0] = a0
+    for i in range(len(t)-1):
+        dt = t[i+1] - t[i] # nicht langsam
+        d_adj = adjoint_fmu(a[i], z[i], z_ref[i], t[i], optimisation_parameters, df_dz_trajectory[i]) # lang, aber die steps brauchen nicht lang?
+        a[i+1] = a[i] + dt * d_adj
+    return a
 
 # Based on https://www.mathworks.com/help/deeplearning/ug/dynamical-system-modeling-using-neural-ode.html#TrainNeuralODENetworkWithRungeKuttaODESolverExample-14
 def create_mini_batch(n_batches, batch_size, X, adjoint, t):
@@ -321,32 +318,35 @@ def create_clean_mini_batch(n_batches, X, t):
         ts.append(t[s[i]:s[i]+mini_batch_size])
     return x0, targets, ts
 
-def model_losses(z0, a0s, ts, ode_parameters, nn_parameters, targets):
-    zs = []
+def model_losses(x0, a0s, ts, variables, parameters, targets, hybrid_ode, model_function):
+    xs = []
     losses = []
     adjoints = []
     # Compute Predictions
-    for i, ic in enumerate(z0):
-        z = hybrid_euler(ic, ts[i], ode_parameters, nn_parameters)
-        adjoint = adjoint_euler(a0s[i], np.flip(z, axis=0), np.flip(targets[i], axis=0), np.flip(ts[i]), ode_parameters, nn_parameters)
+    for i, ic in enumerate(x0):
+        x = hybrid_euler(ic, ts[i], variables, parameters, hybrid_ode, model_function)
+        adjoint = adjoint_euler(a0s[i], np.flip(x, axis=0), np.flip(targets[i], axis=0), np.flip(ts[i]), variables, parameters, hybrid_ode, model_function)
         adjoint = np.flip(adjoint, axis=0)
-        losses.append(float(J(z, targets[i], ode_parameters, nn_parameters)))
-        zs.append(z)
+        losses.append(float(J(x, targets[i], parameters)))
+        xs.append(x)
         adjoints.append(adjoint)
 
-    return zs, adjoints, losses
+    return xs, adjoints, losses
 
-# Vectorize the  jacobian df_dtheta for all time points
-df_dtheta_function = lambda z, t, phi, theta: jax.jacobian(hybrid_ode, argnums=3)(z, t, phi, theta)
-vectorized_df_dtheta_function = jit(jax.vmap(df_dtheta_function, in_axes=(0, 0, None, None)))
-df_dtheta_function = jit(df_dtheta_function)
 
-df_dt_function = lambda z, t, phi, theta: jax.jacobian(hybrid_ode, argnums=2)(z, t, phi, theta)
-df_dt_function = jit(df_dt_function)
+########################################################################################
+#### JAX FUNCTIONS FMU  ################################################################
+########################################################################################
 
-# Vectorize the  jacobian dg_dtheta for all time points
-dg_dtheta_function = lambda z, z_ref, phi: jax.grad(g, argnums=3)(z, z_ref, phi)
-vectorized_dg_dtheta_function = jit(jax.vmap(dg_dtheta_function, in_axes=(0, 0, None, None)))
+df_dx_function_FMU = lambda dfmu_dz, dinput_dz, dfmu_dinput: dfmu_dz + dinput_dz * dfmu_dinput
+vectorized_df_dx_function = jax.jit(jax.vmap(df_dx_function_FMU, in_axes=(0,0,0)))
+
+########################################################################################
+#### JAX FUNCTIONS COMMON  #############################################################
+########################################################################################
+
+dg_dtheta_function = lambda x, x_ref, parameters: jax.grad(g, argnums=2)(x, x_ref, parameters)
+vectorized_dg_dtheta_function = jit(jax.vmap(dg_dtheta_function, in_axes=(0, 0, None)))
 
 # The Neural Network structure class
 class ExplicitMLP(nn.Module):
@@ -368,157 +368,291 @@ class ExplicitMLP(nn.Module):
                 x = nn.relu(x)
         return x
 
-def create_nn(layers, z0):
+def create_nn(layers, x0):
     key1, key2, = random.split(random.PRNGKey(np.random.randint(0,100)), 2)
     neural_network = ExplicitMLP(features=layers)
-    nn_parameters = neural_network.init(key2, np.zeros((1, z0.shape[0])))
-    jitted_neural_network = jax.jit(lambda p, x: neural_network.apply(p, x))
-    return jitted_neural_network, nn_parameters
+    parameters = neural_network.init(key2, np.zeros((1, x0.shape[0])))
+    jitted_neural_network = jax.jit(lambda params, inputs: neural_network.apply(params, inputs))
+    return jitted_neural_network, parameters, neural_network
 
-def residual_wrapper(flat_nn_parameters, optimizer_args):
-    # Unpack the arguments
+def residual_wrapper(parameters, args):
+    pD = args['problemDescription']
+    mD = args['modelDescription']
+    oD = args['optimizerDescription']
+    gS = args['generalSettings']
+    residual = args['residual']
+    restore = gS['load_parameters']
+    reference_data = args['reference_data']
+    pointers = args['pointers']
+    results_directory = args['results_directory']
+    logger = args['logger']
+    model = args['model']
+    unravel_pytree = args['unravel_pytree']
+
+    J_residual = args['J_residual']
+    checkpoint_manager = args['checkpoint_manager']
+
+    t_train = reference_data['t_train']
+    t_test = reference_data['t_test']
+    x_ref_train = reference_data['x_ref_train']
+    x_ref_test = reference_data['x_ref_test']
 
     start = time.time()
 
-    t = optimizer_args['time']
-    t_val = optimizer_args['val_time']
-    z0 = optimizer_args['initial_condition']
-    z_ref = optimizer_args['reference_solution']
-    z_ref_val = optimizer_args['validation_solution']
-    ode_parameters = optimizer_args['reference_ode_parameters']
-    unravel_pytree = optimizer_args['unravel_function']
-    epoch = optimizer_args['epoch']
-    losses = optimizer_args['losses']
-    batching = optimizer_args['batching']
-    random_shift = optimizer_args['random_shift']
-    checkpoint_interval = optimizer_args['checkpoint_interval']
-    results_path = optimizer_args['results_path']
-    best_loss = optimizer_args['best_loss']
-    checkpoint_manager = optimizer_args['checkpoint_manager']
-    lambda_ = optimizer_args['lambda']
-    logger = optimizer_args['logger']
+    parameters = unravel_pytree(parameters)
 
+    # outputs = create_residuals(x_ref_train, t_train, pD['variables'])[:,1]
+    # inputs = x_ref_train[:-1]
+    if pD['fmu']:
+        x_pred = args['fmu_evaluator'].euler(x_ref_train[0], t_train, model, parameters)
+        args['fmu_evaluator'].reset_fmu(t_test[0], t_test[-1])
+        x_pred_test = args['fmu_evaluator'].euler(x_ref_test[0], t_test, model, parameters)
+        args['fmu_evaluator'].reset_fmu(t_train[0], t_train[-1])
+    else:
+        hybrid_ode = args['ode_hybrid']
+        x_pred = hybrid_euler(x_ref_train[0], t_train, pD['variables'], parameters, hybrid_ode, model)
+        x_pred_test = hybrid_euler(x_ref_test[0], t_test, pD['variables'], parameters, hybrid_ode, model)
+    loss = float(J(x_pred, x_ref_train, parameters))
+    loss_test = float(J(x_pred_test, x_ref_test, parameters))
 
-    # Get the parameters of the neural network out of the array structure into the
-    # tree structure
-    nn_parameters = unravel_pytree(flat_nn_parameters)
-    # Save best parameters
+    if oD['batching']:
+        losses_res = []
+        flat_gradients = []
+        batch_preds = []
+        for batch_idx, (input_train, output_train) in enumerate(args['train_dataloader']):
+            input_train, output_train = input_train.to(gS['device']), output_train.to(gS['device'])
+            input_train = input_train.detach().numpy()
+            output_train = output_train.detach().numpy()
+            (loss_res, batch_pred), gradient = jax.value_and_grad(J_residual, argnums=2, has_aux=True)(input_train, output_train, parameters)
+            flat_gradient, _ = flatten_util.ravel_pytree(gradient)
 
-    # in this case we only want the second part since the first part is completly known
-    # and the neural network only works on the second part
-    outputs = create_residuals(z_ref, t, ode_parameters)[:,1]
-    inputs = z_ref[:-1]
+            if args['epoch'] % gS['eval_freq'] == 0:
+                if pD['fmu']:
+                    t_batch = t_train[input_train.shape[0]*batch_idx:input_train.shape[0]*(batch_idx+1)]
+                    args['fmu_evaluator'].reset_fmu(t_batch[0], t_batch[-1])
+                    x_pred_batch = args['fmu_evaluator'].euler(x_ref_train[input_train.shape[0]*batch_idx], t_batch, model, parameters)
+                else:
+                    x_pred_batch = hybrid_euler(x_ref_train[input_train.shape[0]*batch_idx], t_train[input_train.shape[0]*batch_idx:input_train.shape[0]*(batch_idx+1)], pD['variables'], parameters, hybrid_ode, model)
+                batch_preds.append(x_pred_batch)
 
-    z = hybrid_euler(z0, t, ode_parameters, nn_parameters)
-    z_val = hybrid_euler(z_ref[-1], t_val, ode_parameters, nn_parameters)
+            losses_res.append(loss_res)
+            flat_gradients.append(flat_gradient)
 
-    # loss = J_residual(inputs, outputs, nn_parameters)
-    # res_loss = J_residual(inputs, outputs, nn_parameters)
-    res_loss, gradient = jax.value_and_grad(J_residual, argnums=2)(inputs, outputs, nn_parameters)
-    true_loss = float(J(z, z_ref, ode_parameters, nn_parameters))
-    true_val_loss = float(J(z_val, z_ref_val, ode_parameters, nn_parameters))
-    flat_gradient, _ = flatten_util.ravel_pytree(gradient)
-    optimizer_args['epoch'] += 1
-    optimizer_args['losses'].append(true_loss)
-    optimizer_args['losses_res'].append(float(res_loss))
-    optimizer_args['losses_val'].append(true_val_loss)
-    if epoch > 0 and true_val_loss < best_loss:
-        optimizer_args['saved_nn_parameters'] = nn_parameters
-        optimizer_args['best_loss'] = true_loss
-        optimizer_args['best_val_loss'] = true_val_loss
-        save_args = orbax_utils.save_args_from_target(nn_parameters)
-        checkpoint_manager.save(epoch, nn_parameters, save_kwargs={'save_args': save_args})
+            if batch_idx % 10 == 0:
+                logger.info('Residual Training - Epoch: {}/{} [{}/{} ({:.0f}%)]\t Batch Loss: {:.6f}'.format(
+                    args['epoch'], args['epochs'], batch_idx * len(input_train), len(args['train_dataloader'].dataset),
+                    100. * batch_idx / len(args['train_dataloader']), loss_res))
 
-    if epoch % checkpoint_interval == 0:
-        plot_results(t, z, z_ref, results_path+f'_epoch_{epoch}')
-        plot_results(t_val, z_val, z_ref_val, results_path+f'_epoch_{epoch}_val')
-        plot_losses(epochs=list(range(len(optimizer_args['losses']))), training_losses=optimizer_args['losses'], validation_losses=optimizer_args['losses_val'], path=residual_path+'_losses')
-        plot_losses(epochs=list(range(len(optimizer_args['losses_res']))), training_losses=optimizer_args['losses_res'], path=residual_path+'_losses_res')
+        loss_res_batches = np.array(losses_res).sum()
+        loss_res = loss_res_batches
+        flat_gradient = np.mean(np.array(flat_gradients), 0)
+        if args['epoch'] % gS['eval_freq'] == 0:
+            x_pred_batch = np.vstack(batch_preds)
+    else:
+        inputs_train = args['train_dataloader'].dataset.x.detach().numpy()
+        outputs_train = args['train_dataloader'].dataset.y.detach().numpy()
+        (loss_res, pred), gradient = jax.value_and_grad(J_residual, argnums=2, has_aux=True)(inputs_train, outputs_train, parameters, model)
+        flat_gradient, _ = flatten_util.ravel_pytree(gradient)
+        loss_res_batches = None
+        x_pred_batch = None
 
-        # optimizer_args['saved_nn_parameters'] = nn_parameters
+    args['losses_train'].append(loss)
+    args['losses_train_res'].append(loss_res)
+    args['losses_test'].append(loss_test)
+    args['accuracies_train'].append(0.0)
+    args['accuracies_test'].append(0.0)
+    args['losses_batches'].append(loss_res_batches)
 
-    L2_regularisation = lambda_/(2*(t.shape[0])) * np.linalg.norm(flat_nn_parameters, 2)**2
-    # L2_regularisation = 0.0
+    if args['losses_test'][-1] < args['best_loss_test']:
+        args['best_loss'] = args['losses_train'][-1]
+        args['best_loss_test'] = args['losses_test'][-1]
+        args['best_parameters'] = parameters
+        args['best_pred'] = x_pred
+        args['best_pred_test'] = x_pred_test
+        if gS['save_parameters']:
+            save_args = orbax_utils.save_args_from_target(parameters)
+            checkpoint_manager.save(args['epoch'], parameters, save_kwargs={'save_args': save_args})
 
-    end = time.time()
+    if args['epoch'] % gS['eval_freq'] == 0:
+        if gS['plot_prediction']:
+            result_plot_multi_dim(mD['name'], pD['name'], os.path.join(results_directory, f'Prediction Epoch {args["epoch"]}.png'),
+                            t_train, x_pred, t_test, x_pred_test,
+                            np.hstack((t_train, t_test)), np.vstack((x_ref_train, x_ref_test)))
+            if oD['batching']:
+                result_plot_multi_dim(mD['name'], pD['name'], os.path.join(results_directory, f'Prediction (batched) Epoch {args["epoch"]}.png'),
+                                t_train[:x_pred_batch.shape[0]], x_pred_batch, t_test, x_pred_test,
+                                np.hstack((t_train, t_test)), np.vstack((x_ref_train, x_ref_test)))
+            visualise_wb(parameters, results_directory, f'Parameters Epoch {args["epoch"]}')
+        if gS['plot_loss']:
+            build_plot(epochs=len(args['losses_train']),
+                model_name=mD['name'],
+                dataset_name=pD['name'],
+                plot_path=os.path.join(results_directory, 'Loss.png'),
+                train_acc=args['accuracies_train'],
+                test_acc=args['accuracies_test'],
+                train_loss=args['losses_train'],
+                test_loss=args['losses_test']
+            )
+            if oD['batching']:
+                build_plot(epochs=len(args['losses_train']),
+                    model_name=mD['name'],
+                    dataset_name=pD['name'],
+                    plot_path=os.path.join(results_directory, 'Loss (batched).png'),
+                    train_acc=args['accuracies_train'],
+                    test_acc=args['accuracies_test'],
+                    train_loss=args['losses_batches'],
+                    test_loss=args['losses_test']
+                )
+
+    L2_regularisation = oD['lambda']/(2*(t_train.shape[0])) * np.linalg.norm(flat_gradient, 2)**2
 
     loss_cutoff = 1e-5
-    if res_loss < loss_cutoff:
+    if loss_res < loss_cutoff:
         warnings.warn('Terminating Optimization: Required Loss reached')
 
-    logger.info(f'Pretraining: Epoch: {epoch}, Residual Loss: {res_loss:.10f}, True Loss: {true_loss:.10f}, Time: {end-start:3.3f}')
-    return res_loss + L2_regularisation, flat_gradient
+    epoch_time = time.time() - start
 
-def function_wrapper(flat_nn_parameters, optimizer_args):
+    logger.info('Epoch: {:04d}/{}    Loss (TrajTrain): {:.5e}    Loss (TrajTest): {:.5e}    Loss (ResTrain{}): {:.5e}'.format(
+                    args['epoch'],
+                    args['epochs'],
+                    loss,
+                    loss_test,
+                    ', batched' if oD['batching'] else '',
+                    loss_res
+                    ))
+
+    args['epoch'] += 1
+
+    return loss_res + L2_regularisation, flat_gradient
+
+def trajectory_wrapper(parameters, args):
     '''This is a function wrapper for the optimisation function. It returns the
     loss and the jacobian'''
 
     start = time.time()
 
     # Unpack the arguments
-    t = optimizer_args['time']
-    t_val = optimizer_args['val_time']
-    z0 = optimizer_args['initial_condition']
-    z_ref = optimizer_args['reference_solution']
-    z_ref_val = optimizer_args['validation_solution']
-    ode_parameters = optimizer_args['reference_ode_parameters']
-    unravel_pytree = optimizer_args['unravel_function']
-    epoch = optimizer_args['epoch']
-    losses = optimizer_args['losses']
-    batching = optimizer_args['batching']
-    n_batches = optimizer_args['n_batches']
-    batch_size = optimizer_args['batch_size']
-    clean_batching = optimizer_args['clean_batching']
-    clean_n_batches = optimizer_args['clean_n_batches']
-    random_shift = optimizer_args['random_shift']
-    checkpoint_interval = optimizer_args['checkpoint_interval']
-    results_path = optimizer_args['results_path']
-    best_loss = optimizer_args['best_loss']
-    checkpoint_manager = optimizer_args['checkpoint_manager']
-    lambda_ = optimizer_args['lambda']
-    logger = optimizer_args['logger']
+    pD = args['problemDescription']
+    mD = args['modelDescription']
+    oD = args['optimizerDescription']
+    gS = args['generalSettings']
 
-    # Get the parameters of the neural network out of the array structure into the
-    # tree structure
-    nn_parameters = unravel_pytree(flat_nn_parameters)
+    residual = args['residual']
+    restore = gS['load_parameters']
+    reference_data = args['reference_data']
+    pointers = args['pointers']
+    results_directory = args['results_directory']
+    epoch = args['epoch']
+    epochs = args['epochs']
+    logger = args['logger']
 
-    z = hybrid_euler(z0, t, ode_parameters, nn_parameters) # 0.01-0.06s
-    z = np.nan_to_num(z, nan=1e8)
-    a0 = np.zeros(z0.shape)
-    # df_dtheta_trajectory = vectorized_df_dtheta_function(z, t, ode_parameters, nn_parameters)
-    adjoint = adjoint_euler(a0, np.flip(z, axis=0), np.flip(z_ref, axis=0), np.flip(t), ode_parameters, nn_parameters)
-    adjoint = np.flip(adjoint, axis=0)
+    model = args['model']
+    unravel_pytree = args['unravel_pytree']
+    checkpoint_manager = args['checkpoint_manager']
 
-    if batching:
-        # if clean_batching:
-        #     # z0s, targets, a0s, adjoints_, ts = create_clean_mini_batch(clean_n_batches, z_ref, adjoint, t)
-        # else:
-        #     z0s, targets, a0s, adjoints_, ts = create_mini_batch(n_batches, batch_size, z_ref, adjoint, t)
-        a0s = np.zeros((n_batches, *z0.shape))
-        zs, adjoints, losses = model_losses(z0s, a0s, ts, ode_parameters, nn_parameters, targets)
-        logger.info(f'Batch losses: {losses}')
-        loss = np.asarray(losses).mean()
-        logger.info(f'Mean Loss on Batches: {loss}')
-        gradients = []
-        for z_, adjoint_, t_ in zip(zs, adjoints, ts):
-            # Calculate the gradient of the hybrid ode with respect to the nn_parameters
-            df_dtheta_trajectory = vectorized_df_dtheta_function(z_, t_, ode_parameters, nn_parameters)
-            # For loop probably not the fastest; Pytree probably better
-            # Matrix multiplication of adjoint variable with jacobian
-            df_dtheta_trajectory = unfreeze(df_dtheta_trajectory)
-            for layer in df_dtheta_trajectory['params']:
-                # Sum the matmul result over the entire time_span to get the final gradients
-                df_dtheta_trajectory['params'][layer]['bias'] = np.einsum("iN,iNj->j", adjoint_, df_dtheta_trajectory['params'][layer]['bias'])
-                df_dtheta_trajectory['params'][layer]['kernel'] = np.einsum("iN,iNjk->jk", adjoint_, df_dtheta_trajectory['params'][layer]['kernel'])
-            df_dtheta = df_dtheta_trajectory
-            dJ_dtheta = df_dtheta
-            flat_dJ_dtheta, _ = flatten_util.ravel_pytree(dJ_dtheta)
-            gradients.append(flat_dJ_dtheta)
-        flat_dJ_dtheta = np.asarray(gradients).mean(0)
+    t_train = reference_data['t_train']
+    t_test = reference_data['t_test']
+    x_ref_train = reference_data['x_ref_train']
+    x_ref_test = reference_data['x_ref_test']
+
+    start = time.time()
+
+    parameters = unravel_pytree(parameters)
+
+    if pD['fmu']:
+        fmu_evaluator = args['fmu_evaluator']
+        vectorized_dinput_dx_function = args['vectorized_dinput_dx_function_FMU']
+        dinput_dtheta_function = args['dinput_dtheta_function_FMU']
+        vectorized_df_dtheta_function = args['vectorized_df_dtheta_function_FMU']
+
+        fmu_evaluator.training = False
+        x_pred = fmu_evaluator.euler(x_ref_train[0], t_train, model, parameters)
+        fmu_evaluator.reset_fmu(t_test[0], t_test[-1])
+        x_pred_test = fmu_evaluator.euler(x_ref_test[0], t_test, model, parameters)
+        fmu_evaluator.reset_fmu(t_train[0], t_train[-1])
+        fmu_evaluator.training = True
     else:
+        vectorized_df_dtheta_function = args['vectorized_df_dtheta_function']
+        df_dt_function = args['df_dt_function']
+        hybrid_ode = args['ode_hybrid']
+        x_pred = hybrid_euler(x_ref_train[0], t_train, pD['variables'], parameters, hybrid_ode, model)
+        x_pred_test = hybrid_euler(x_ref_test[0], t_test, pD['variables'], parameters, hybrid_ode, model)
+    loss = float(J(x_pred, x_ref_train, parameters))
+    loss_test = float(J(x_pred_test, x_ref_test, parameters))
 
-        # Calculate the gradient of the hybrid ode with respect to the nn_parameters
-        df_dtheta_trajectory = vectorized_df_dtheta_function(z, t, ode_parameters, nn_parameters)
+    if oD['batching']:
+        if pD['fmu']:
+            pred_batches = []
+            adjoints = []
+            losses = []
+            times = []
+            gradients = []
+            for batch_idx, (input_train, output_train) in enumerate(zip(args['inputs_train'], args['outputs_train'])):
+                time_batch = input_train
+                x_ref_train_batch = output_train
+                x_pred_batch, dfmu_dz_batch, dfmu_dinput_batch = fmu_evaluator.euler(x_ref_train_batch[0], time_batch,model, parameters) # 0.06-0.09 sec
+                dinput_dz_batch = vectorized_dinput_dx_function(parameters, x_pred_batch)
+                df_dx_batch = vectorized_df_dx_function(dfmu_dz_batch, dinput_dz_batch, dfmu_dinput_batch)
+                a0 = np.array([0, 0])
+                adjoint_batch = adjoint_euler_fmu(a0, np.flip(x_pred_batch, axis=0), np.flip(x_ref_train_batch, axis=0), np.flip(time_batch), parameters, np.flip(np.asarray(df_dx_batch), axis=0)) # 0.025-0.035
+                adjoint_batch = np.flip(adjoint_batch, axis=0)
+                loss_batch = J(x_pred_batch, x_ref_train_batch, parameters)
+                dinput_dtheta_batch = dinput_dtheta_function(parameters, x_pred_batch)
+
+                df_dtheta_batch = vectorized_df_dtheta_function(dfmu_dinput_batch, dinput_dtheta_batch)
+                dg_dtheta_batch = unfreeze(vectorized_dg_dtheta_function(x_pred_batch, x_ref_train_batch, parameters))
+
+                for layer in df_dtheta_batch['params']:
+                    # Sum the matmul result over the entire time_span to get the final gradients
+                    df_dtheta_batch['params'][layer]['bias'] = np.einsum("iN,iNj->j", adjoint_batch, df_dtheta_batch['params'][layer]['bias'])
+                    df_dtheta_batch['params'][layer]['kernel'] = np.einsum("iN,iNjk->jk", adjoint_batch, df_dtheta_batch['params'][layer]['kernel'])
+                    dg_dtheta_batch['params'][layer]['kernel'] = np.einsum("Nij->ij", dg_dtheta_batch['params'][layer]['kernel'])
+                    dg_dtheta_batch['params'][layer]['bias'] = np.einsum("Nj->j", dg_dtheta_batch['params'][layer]['bias'])
+
+                pred_batches.append(x_pred_batch)
+                # adjoints.append(adjoint)
+                losses.append(loss_batch)
+                times.append(time_batch)
+                dJ_dtheta = jax.tree_map(lambda x, y: x+y, df_dtheta_batch, dg_dtheta_batch)
+                flat_dJ_dtheta, _ = flatten_util.ravel_pytree(dJ_dtheta)
+                gradients.append(flat_dJ_dtheta)
+
+            loss_batches = np.asarray(losses).sum()
+            accuracies_batches = 0.0
+            pred_batched = np.vstack(pred_batches)
+            gradient = np.array(gradients).sum(0)
+        else:
+            times = np.array(args['inputs_train'])
+            x_ref_train_batches = np.array(args['outputs_train'])
+            a0s = np.zeros((len(args['inputs_train']), *x_ref_train[0].shape))
+            x0s = x_ref_train_batches[:,0]
+            pred_batches, adjoints, losses = model_losses(x0s, a0s, times, pD['variables'], parameters, x_ref_train_batches, hybrid_ode, model)
+
+            loss_batches = np.asarray(losses).sum()
+            accuracies_batches = 0.0
+            gradients = []
+            for x_, adjoint_, t_ in zip(pred_batches, adjoints, times):
+                # Calculate the gradient of the hybrid ode with respect to the parameters
+                df_dtheta_trajectory = vectorized_df_dtheta_function(x_, t_, pD['variables'], parameters)
+                # For loop probably not the fastest; Pytree probably better
+                # Matrix multiplication of adjoint variable with jacobian
+                df_dtheta_trajectory = unfreeze(df_dtheta_trajectory)
+                for layer in df_dtheta_trajectory['params']:
+                    # Sum the matmul result over the entire time_span to get the final gradients
+                    df_dtheta_trajectory['params'][layer]['bias'] = np.einsum("iN,iNj->j", adjoint_, df_dtheta_trajectory['params'][layer]['bias'])
+                    df_dtheta_trajectory['params'][layer]['kernel'] = np.einsum("iN,iNjk->jk", adjoint_, df_dtheta_trajectory['params'][layer]['kernel'])
+                df_dtheta = df_dtheta_trajectory
+                dJ_dtheta = df_dtheta
+                flat_dJ_dtheta, _ = flatten_util.ravel_pytree(dJ_dtheta)
+                gradients.append(flat_dJ_dtheta)
+            gradient = np.asarray(gradients).sum(0)
+            pred_batched = np.vstack(pred_batches)
+    else:
+        a0 = np.zeros(x_ref_train[0].shape)
+        adjoint = adjoint_euler(a0, np.flip(x_pred, axis=0), np.flip(x_ref_train, axis=0), np.flip(t_train), pD['variables'], parameters, hybrid_ode, model)
+        adjoint = np.flip(adjoint, axis=0)
+        # Calculate the gradient of the hybrid ode with respect to the parameters
+        df_dtheta_trajectory = vectorized_df_dtheta_function(x_ref_train, t_train, pD['variables'], parameters)
         # For loop probably not the fastest; Pytree probably better
         # Matrix multiplication of adjoint variable with jacobian
         df_dtheta_trajectory = unfreeze(df_dtheta_trajectory)
@@ -529,43 +663,82 @@ def function_wrapper(flat_nn_parameters, optimizer_args):
         df_dtheta = df_dtheta_trajectory
         dJ_dtheta = df_dtheta
         flat_dJ_dtheta, _ = flatten_util.ravel_pytree(dJ_dtheta)
+        loss_batches = loss
+        accuracies_batches = 0.0
+        pred_batched = x_pred
+        gradient = flat_dJ_dtheta
 
-    loss = float(J(z, z_ref, ode_parameters, nn_parameters))
-
-    if random_shift:
-        if np.abs(loss - losses[-1]) < 0.1:
-            flat_dJ_dtheta += np.random.normal(0, np.linalg.norm(flat_dJ_dtheta,2), flat_dJ_dtheta.shape)
-
-    z_val = hybrid_euler(z_ref[-1], t_val, ode_parameters, nn_parameters)
-    val_loss = float(J(z_val, z_ref_val, ode_parameters, nn_parameters))
-
+    # if random_shift:
+    #     if np.abs(loss - losses[-1]) < 0.1:
+    #         flat_dJ_dtheta += np.random.normal(0, np.linalg.norm(flat_dJ_dtheta,2), flat_dJ_dtheta.shape)
 
 
-        # optimizer_args['saved_nn_parameters'] = nn_parameters
+    args['losses_train'].append(loss)
+    args['losses_test'].append(loss_test)
+    args['accuracies_train'].append(0.0)
+    args['accuracies_test'].append(0.0)
+    args['losses_batches'].append(loss_batches)
 
-        # checkpoint_manager.save(epoch, nn_parameters, save_kwargs={'save_args': save_args})
+    if args['losses_test'][-1] < args['best_loss']:
+        args['best_loss'] = args['losses_train'][-1]
+        args['best_loss_test'] = args['losses_test'][-1]
+        args['best_parameters'] = parameters
+        args['best_pred'] = x_pred
+        args['best_pred_test'] = x_pred_test
+        if gS['save_parameters']:
+            save_args = orbax_utils.save_args_from_target(parameters)
+            checkpoint_manager.save(epoch, parameters, save_kwargs={'save_args': save_args})
 
-    optimizer_args['epoch'] += 1
-    optimizer_args['losses'].append(loss)
-    optimizer_args['losses_val'].append(val_loss)
+    if epoch % gS['eval_freq'] == 0:
+        if gS['plot_prediction']:
+            result_plot_multi_dim(mD['name'], pD['name'], os.path.join(results_directory, f'Prediction Epoch {args["epoch"]}.png'),
+                            t_train, x_pred, t_test, x_pred_test,
+                            np.hstack((t_train, t_test)), np.vstack((x_ref_train, x_ref_test)))
+            if oD['batching']:
+                result_plot_multi_dim(mD['name'], pD['name'], os.path.join(results_directory, f'Prediction (batched) Epoch {args["epoch"]}.png'),
+                            t_train[:pred_batched.shape[0]], pred_batched, t_test, x_pred_test,
+                            np.hstack((t_train, t_test)), np.vstack((x_ref_train, x_ref_test)))
+        if gS['plot_loss']:
+                build_plot(epochs=len(args['losses_train']),
+                    model_name=mD['name'],
+                    dataset_name=pD['name'],
+                    plot_path=os.path.join(results_directory, 'Loss.png'),
+                    train_acc=args['accuracies_train'],
+                    test_acc=args['accuracies_test'],
+                    train_loss=args['losses_train'],
+                    test_loss=args['losses_test']
+                )
+                if oD['batching']:
+                    build_plot(epochs=len(args['losses_batches']),
+                        model_name=mD['name'],
+                        dataset_name=pD['name'],
+                        plot_path=os.path.join(results_directory, 'Loss (batched).png'),
+                        train_acc=args['accuracies_train'],
+                        test_acc=args['accuracies_test'],
+                        train_loss=args['losses_batches'],
+                        test_loss=args['losses_test']
+                    )
+        if gS['plot_parameters']:
+            visualise_wb(parameters, results_directory, f'Parameters Epoch {args["epoch"]}.png')
 
-    if epoch > 0 and val_loss < best_loss:
-        optimizer_args['saved_nn_parameters'] = nn_parameters
-        optimizer_args['best_loss'] = loss
-        optimizer_args['best_loss_val'] = val_loss
-        save_args = orbax_utils.save_args_from_target(nn_parameters)
-        checkpoint_manager.save(epoch, nn_parameters, save_kwargs={'save_args': save_args})
+    L2_regularisation = oD['lambda']/(2*(t_train.shape[0])) * np.linalg.norm(gradient, 2)**2
 
     end = time.time()
 
-    logger.info(f'Epoch: {epoch}, Loss: {loss:.7f}, Time: {end-start:3.3f}')
-    if epoch % checkpoint_interval == 0:
-        plot_results(t, z, z_ref, results_path+f'_epoch_{epoch}')
-        logger.info('#################################################')
-        logger.info(f'Epoch: {epoch}, Valdiation Loss: {val_loss:.7f}')
-        plot_results(t_val, z_val, z_ref_val, results_path+f'_epoch_{epoch}_val')
-        plot_losses(epochs=list(range(len(optimizer_args['losses']))), training_losses=optimizer_args['losses'], validation_losses=optimizer_args['losses_val'], path=residual_path+'_losses')
-    return loss, flat_dJ_dtheta/(t.shape[0])
+    # loss_cutoff = 1e-5
+    # if loss_res < loss_cutoff:
+    #     warnings.warn('Terminating Optimization: Required Loss reached')
+
+    logger.info('Epoch: {:04d}/{}    Loss (TrajTrain): {:.5e}    Loss (TrajTest): {:.5e}    Loss (TrajTrain{}): {:.5e}'.format(
+                    epoch,
+                    args['epochs'],
+                    loss,
+                    loss_test,
+                    ', batched' if oD['batching'] else '',
+                    loss_batches
+                    ))
+    args['epoch'] += 1
+    return loss + L2_regularisation, gradient
 
 
 if __name__ == '__main__':
@@ -654,49 +827,49 @@ if __name__ == '__main__':
     if args.aug_state:
         ode = ode_aug
         hybrid_ode = hybrid_ode_aug
-        z0 = [1.0, 0.0]
-        z0 += [0.0 for i in range(args.aug_dim)]
-        z0 = np.asarray(z0)
+        x0 = [1.0, 0.0]
+        x0 += [0.0 for i in range(args.aug_dim)]
+        x0 = np.asarray(x0)
     elif args.stimulate:
         ode = ode_stim
         hybrid_ode = hybrid_ode_stim
         ode_res = ode_stim_res
-        z0 = np.array([1.0, 0.0])
+        x0 = np.array([1.0, 0.0])
     elif args.simple_problem:
         ode = ode_simple
         hybrid_ode = hybrid_ode_simple
-        z0 = np.array([2.0, 0.0])
+        x0 = np.array([2.0, 0.0])
     else:
-        z0 = np.array([1.0, 0.0])
+        x0 = np.array([1.0, 0.0])
 
     t_ref = np.linspace(args.start, args.end, args.n_steps)
     t_val = np.linspace(args.end, (args.end-args.start) * 1.5, int(args.n_steps * 0.5))
-    reference_ode_parameters = np.asarray([args.kappa, args.mu, args.mass])
-    z_ref = f_euler(z0, t_ref, reference_ode_parameters)
-    z0_val = z_ref[-1]
-    z_val = f_euler(z0_val, t_val, reference_ode_parameters)
+    reference_variables = np.asarray([args.kappa, args.mu, args.mass])
+    x_ref = f_euler(x0, t_ref, reference_variables)
+    x0_val = x_ref[-1]
+    x_val = f_euler(x0_val, t_val, reference_variables)
 
     layers = [args.layer_size]*args.layers
     layers.append(1)
-    jitted_neural_network, nn_parameters = create_nn(layers, z0)
+    jitted_neural_network, parameters = create_nn(layers, x0)
 
     if args.restore:
         # Restore previous parameters
         step = checkpoint_manager.latest_step()
-        nn_parameters = checkpoint_manager.restore(step)
+        parameters = checkpoint_manager.restore(step)
 
-    flat_nn_parameters, unravel_pytree = flatten_util.ravel_pytree(nn_parameters)
+    flat_parameters, unravel_pytree = flatten_util.ravel_pytree(parameters)
 
     epoch = 0
 
     # Put all arguments the optimization needs into one array for the minimize function
-    optimizer_args = {'time' : t_ref,
+    args = {'time' : t_ref,
                     'val_time': t_val,
-                    'initial_condition' : z0,
-                    'reference_solution' : z_ref,
-                    'validation_solution' : z_val,
-                    'reference_ode_parameters' : reference_ode_parameters,
-                    'unravel_function' : unravel_pytree,
+                    'initial_condition' : x0,
+                    'reference_solution' : x_ref,
+                    'validation_solution' : x_val,
+                    'reference_variables' : reference_variables,
+                    'unravel_pytree' : unravel_pytree,
                     'epoch' : epoch,
                     'losses' : [],
                     'losses_res': [],
@@ -710,7 +883,7 @@ if __name__ == '__main__':
                     'random_shift' : args.random_shift,
                     'checkpoint_interval' : args.checkpoint_interval,
                     'results_path' : residual_path,
-                    'saved_nn_parameters' : nn_parameters,
+                    'saved_parameters' : parameters,
                     'best_loss' : np.inf,
                     'best_loss_val': np.inf,
                     'checkpoint_manager' : checkpoint_manager,
@@ -718,14 +891,14 @@ if __name__ == '__main__':
                     'logger': logger}
 
     if args.clean_batching:
-        z0s, targets, ts = create_clean_mini_batch(args.clean_n_batches, z_ref, t_ref)
-        optimizer_args['z0s'] = z0s
-        optimizer_args['targets'] = targets
-        optimizer_args['ts'] = ts
+        x0s, targets, ts = create_clean_mini_batch(args.clean_n_batches, x_ref, t_ref)
+        args['x0s'] = x0s
+        args['targets'] = targets
+        args['ts'] = ts
     else:
-        optimizer_args['z0s'] = None
-        optimizer_args['targets'] = None
-        optimizer_args['ts'] = None
+        args['x0s'] = None
+        args['targets'] = None
+        args['ts'] = None
 
     # Train on Residuals
     ####################################################################################
@@ -740,65 +913,65 @@ if __name__ == '__main__':
             if args.method == 'Adam':
                 Adam = AdamOptim(eta=args.adam_eta, beta1=args.adam_beta1, beta2=args.adam_beta2, epsilon=args.adam_eps)
                 for i in range(args.res_steps):
-                    loss, grad = residual_wrapper(flat_nn_parameters=flat_nn_parameters, optimizer_args=optimizer_args)
-                    flat_nn_parameters = Adam.update(i+1, flat_nn_parameters, grad)
+                    loss, grad = residual_wrapper(flat_parameters=flat_parameters, args=args)
+                    flat_parameters = Adam.update(i+1, flat_parameters, grad)
             else:
-                residual_result = minimize(residual_wrapper, flat_nn_parameters, method=args.method, jac=True, args=optimizer_args, options={'maxiter':args.res_steps})
+                residual_result = minimize(residual_wrapper, flat_parameters, method=args.method, jac=True, args=args, options={'maxiter':args.res_steps})
         except (KeyboardInterrupt, UserWarning):
             pass
         experiment_time = time.time() - start
-        nn_parameters = optimizer_args['saved_nn_parameters']
-        best_loss = optimizer_args['best_loss']
+        parameters = args['saved_parameters']
+        best_loss = args['best_loss']
         logger.info(f'Best Loss in Residual Training: {best_loss}')
-        flat_nn_parameters, _ = flatten_util.ravel_pytree(nn_parameters)
+        flat_parameters, _ = flatten_util.ravel_pytree(parameters)
         # Plot the result of the training on residuals
-        z = hybrid_euler(z0, t_ref, reference_ode_parameters, nn_parameters)
-        plot_results(t_ref, z, z_ref, residual_path+'_best')
-        plot_losses(epochs=list(range(len(optimizer_args['losses']))), training_losses=optimizer_args['losses'], validation_losses=optimizer_args['losses_val'], path=residual_path+'_losses')
-        plot_losses(epochs=list(range(len(optimizer_args['losses_res']))), training_losses=optimizer_args['losses_res'], path=residual_path+'_losses_res')
+        x = hybrid_euler(x0, t_ref, reference_variables, parameters)
+        plot_results(t_ref, x, x_ref, residual_path+'_best')
+        plot_losses(epochs=list(range(len(args['losses']))), training_losses=args['losses'], validation_losses=args['losses_val'], path=residual_path+'_losses')
+        plot_losses(epochs=list(range(len(args['losses_res']))), training_losses=args['losses_res'], path=residual_path+'_losses_res')
 
-        results_dict['losses_train_res'] =  list(optimizer_args['losses_res'])
+        results_dict['losses_train_res'] =  list(args['losses_res'])
         results_dict['time_res'] = experiment_time
 
     # Train on Trajectory
     ####################################################################################
-    optimizer_args['results_path'] = trajectory_path
+    args['results_path'] = trajectory_path
     start = time.time()
     try:
         if args.method == 'Adam':
             Adam = AdamOptim(eta=args.adam_eta*10, beta1=args.adam_beta1, beta2=args.adam_beta2, epsilon=args.adam_eps)
             for i in range(args.opt_steps):
-                loss, grad = function_wrapper(flat_nn_parameters=flat_nn_parameters, optimizer_args=optimizer_args)
-                flat_nn_parameters = Adam.update(i+1, flat_nn_parameters, grad)
+                loss, grad = function_wrapper(flat_parameters=flat_parameters, args=args)
+                flat_parameters = Adam.update(i+1, flat_parameters, grad)
         else:
-            res = minimize(function_wrapper, flat_nn_parameters, method=args.method, jac=True, args=optimizer_args, tol=args.tol)
+            res = minimize(function_wrapper, flat_parameters, method=args.method, jac=True, args=args, tol=args.tol)
     except (KeyboardInterrupt, UserWarning):
         pass
 
     experiment_time = time.time() - start
 
-    results_dict['losses_train_traj'] =  list(optimizer_args['losses'])
-    results_dict['losses_train_traj_val'] = list(optimizer_args['losses_val'])
+    results_dict['losses_train_traj'] =  list(args['losses'])
+    results_dict['losses_train_traj_val'] = list(args['losses_val'])
     results_dict['time_traj'] = experiment_time
     logger.info(f'Dumping results to {args.results_file}.')
     with open(args.results_file, 'w') as file:
         yaml.dump(results_dict, file)
 
-    nn_parameters = optimizer_args['saved_nn_parameters']
-    flat_nn_parameters, _ = flatten_util.ravel_pytree(nn_parameters)
+    parameters = args['saved_parameters']
+    flat_parameters, _ = flatten_util.ravel_pytree(parameters)
     dumpable_params = []
-    for param in flat_nn_parameters:
+    for param in flat_parameters:
         dumpable_params.append(float(param))
     with open(args.results_file, 'a') as file:
         yaml.dump({'flat_parameters': dumpable_params}, file)
 
-    best_loss = optimizer_args['best_loss']
+    best_loss = args['best_loss']
     logger.info(f'Best Loss in Training: {best_loss}')
 
-    z_training = hybrid_euler(z0, t_ref, reference_ode_parameters, nn_parameters)
-    z_validation = hybrid_euler(z0_val, t_val, reference_ode_parameters, nn_parameters)
+    z_training = hybrid_euler(x0, t_ref, reference_variables, parameters)
+    x_validation = hybrid_euler(x0_val, t_val, reference_variables, parameters)
 
-    plot_results(t_ref, z_training, z_ref, trajectory_path+'_best')
-    plot_results(t_val, z_validation, z_val, trajectory_path+'_best_val')
-    plot_losses(epochs=range(len(optimizer_args['losses'])), training_losses=optimizer_args['losses'], validation_losses=optimizer_args['losses_val'], path=trajectory_path)
+    plot_results(t_ref, z_training, x_ref, trajectory_path+'_best')
+    plot_results(t_val, x_validation, x_val, trajectory_path+'_best_val')
+    plot_losses(epochs=range(len(args['losses'])), training_losses=args['losses'], validation_losses=args['losses_val'], path=trajectory_path)
 
