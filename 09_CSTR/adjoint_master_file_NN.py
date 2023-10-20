@@ -107,7 +107,6 @@ def ode_res(z, t, ode_parameters):
     UA = ode_parameters[9]  # J/(min K)
     Tc = ode_parameters[10]
 
-
     w = q*rho
     derivative = jnp.array([q*(cA_i - z[0])/V,
                             1/(V*rho*C)*(w*C*(T_i - z[1]) + UA*(Tc - z[1]))])
@@ -131,8 +130,8 @@ def hybrid_ode(z, t, ode_parameters, nn_parameters):
 
     k = jitted_neural_network(nn_parameters, z)
     w = q*rho
-    derivative = jnp.array([q*(cA_i - z[0])/V - jitted_neural_network(nn_parameters, z),
-                            1/(V*rho*C)*(w*C*(T_i - z[1]) - Hr*V*jitted_neural_network(nn_parameters, z) + UA*(Tc - z[1]))]).flatten()
+    derivative = jnp.array([q*(cA_i - z[0])/V - jitted_neural_network(nn_parameters, z) * z[0],
+                            1/(V*rho*C)*(w*C*(T_i - z[1]) - Hr*V*jitted_neural_network(nn_parameters, z)*z[0] + UA*(Tc - z[1]))]).flatten()
     return derivative
 
 
@@ -435,6 +434,9 @@ def function_wrapper(flat_nn_parameters, optimizer_args):
     checkpoint_manager = optimizer_args['checkpoint_manager']
     lambda_ = optimizer_args['lambda']
     logger = optimizer_args['logger']
+    targets = optimizer_args['targets']
+    z0s = optimizer_args['z0s']
+    ts = optimizer_args['ts']
 
     # Get the parameters of the neural network out of the array structure into the
     # tree structure
@@ -529,27 +531,27 @@ def function_wrapper(flat_nn_parameters, optimizer_args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--start', type=float, default=0.0, help='Start value of the ODE integration')
-    parser.add_argument('--end', type=float, default=20.0, help='End value of the ODE integration')
-    parser.add_argument('--n_steps', type=int, default=1001, help='How many integration steps to perform')
+    parser.add_argument('--end', type=float, default=10.0, help='End value of the ODE integration')
+    parser.add_argument('--n_steps', type=int, default=10001, help='How many integration steps to perform')
 
     parser.add_argument('--layers', type=int, default=1, help='Number of hidden layers')
-    parser.add_argument('--layer_size', type=int, default=25, help='Number of neurons in a hidden layer')
+    parser.add_argument('--layer_size', type=int, default=15, help='Number of neurons in a hidden layer')
     parser.add_argument('--lambda_', type=float, default=0.0, help='lambda in the L2 regularisation term')
 
     parser.add_argument('--aug_state', type=bool, default=False, help='Whether or not to use the augemented state for the ODE dynamics')
     parser.add_argument('--aug_dim', type=int, default=4, help='Number of augment dimensions')
     parser.add_argument('--random_shift', type=bool, default=False, help='Whether or not to shift the gradient of training stagnates')
-    parser.add_argument('--batching', type=bool, default=False, help='whether or not to batch the training data')
+    parser.add_argument('--batching', type=bool, default=True, help='whether or not to batch the training data')
     parser.add_argument('--n_batches', type=int, default=200, help='How many (arbitrary) batches to create')
     parser.add_argument('--batch_size', type=int, default=50, help='batch size (for samples-level batching)')
-    parser.add_argument('--clean_batching', type=bool, default=False, help='Whether or not to split training data into with no overlap')
-    parser.add_argument('--clean_n_batches', type=int, default=20, help='How many clean batches to create')
+    parser.add_argument('--clean_batching', type=bool, default=True, help='Whether or not to split training data into with no overlap')
+    parser.add_argument('--clean_n_batches', type=int, default=40, help='How many clean batches to create')
 
     parser.add_argument('--stimulate', type=bool, default=False, help='Whether or not to use the stimulated dynamics')
     parser.add_argument('--simple_problem', type=bool, default=False, help='Whether or not to use a simple damped oscillator instead of VdP')
 
     parser.add_argument('--method', type=str, default='Adam', help='Which optimisation method to use')
-    parser.add_argument('--adam_eta', type=float, default=0.1, help='damping value of the VdP damping term')
+    parser.add_argument('--adam_eta', type=float, default=0.001, help='damping value of the VdP damping term')
     parser.add_argument('--adam_beta1', type=float, default=0.99, help='damping value of the VdP damping term')
     parser.add_argument('--adam_beta2', type=float, default=0.999, help='damping value of the VdP damping term')
     parser.add_argument('--adam_eps', type=float, default=1e-8, help='damping value of the VdP damping term')
@@ -557,8 +559,8 @@ if __name__ == '__main__':
     parser.add_argument('--tol', type=float, default=1e-6, help='Tolerance for the optimisation method')
     parser.add_argument('--opt_steps', type=int, default=1000, help='Max Number of steps for the Training')
 
-    parser.add_argument('--transfer_learning', type=bool, default=True, help='Whether or not to use residual transfer learning')
-    parser.add_argument('--res_steps', type=int, default=1000, help='Number of steps for the Pretraining on the Residuals')
+    parser.add_argument('--transfer_learning', type=bool, default=False, help='Whether or not to use residual transfer learning')
+    parser.add_argument('--res_steps', type=int, default=2000, help='Number of steps for the Pretraining on the Residuals')
 
     parser.add_argument('--build_plot', required=False, default=True, action='store_true',
                         help='specify to build loss and accuracy plot')
@@ -621,7 +623,7 @@ if __name__ == '__main__':
     #     hybrid_ode = hybrid_ode_simple
     #     z0 = np.array([2.0, 0.0])
     # else:
-    z0 = np.array([1.0, 300])
+    z0 = np.array([0.5, 350])
 
     t_ref = np.linspace(args.start, args.end, args.n_steps)
     t_val = np.linspace(args.end, (args.end-args.start) * 1.5, int(args.n_steps * 0.5))
