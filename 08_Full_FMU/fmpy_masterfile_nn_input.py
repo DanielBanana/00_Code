@@ -11,6 +11,7 @@
 from fmu_helper import FMUEvaluator
 
 # For automatic differentiaton
+import copy
 import jax
 from jax import random, jit, flatten_util, numpy as jnp
 from flax import linen as nn
@@ -116,20 +117,16 @@ def f_euler(z0, t, fmu_evaluator: FMUEvaluator, model, model_parameters=None, sa
 
         if fmu_evaluator.training:
             enterEventMode, terminateSimulation, dfmu_dz_at_t, dfmu_dinput_at_t = fmu_evaluator.evaluate_fmu(t[i], dt, model, model_parameters)
-            z[i+1] = z[i] + dt * fmu_evaluator.pointers.dx
             if save_derivatives:
-                residual_derivatives, _, __ = fmu_evaluator.get_derivatives(t[i], z[i])
-                derivatives_list.append(residual_derivatives.copy())
+                derivatives_list.append(copy.copy(fmu_evaluator.pointers.dx))
             dfmu_dz_trajectory.append(dfmu_dz_at_t)
             dfmu_dinput_trajectory.append(dfmu_dinput_at_t)
         else:
             enterEventMode, terminateSimulation = fmu_evaluator.evaluate_fmu(t[i], dt, model, model_parameters)
-            z[i+1] = z[i] + dt * fmu_evaluator.pointers.dx
             if save_derivatives:
-                residual_derivatives = fmu_evaluator.get_derivatives(t[i], z[i])
-                derivatives_list.append(residual_derivatives.copy())
+                derivatives_list.append(copy.copy(fmu_evaluator.pointers.dx))
 
-        # z[i+1] = z[i] + dt * derivatives
+        z[i+1] = z[i] + dt * fmu_evaluator.pointers.dx
 
         if terminateSimulation:
             break
@@ -158,30 +155,18 @@ def adj_euler(a0, z, z_ref, t, optimisation_parameters, df_dz_trajectory):
     '''Applies forward Euler to the adjoint ODE and returns the trajectory'''
     a = np.zeros((t.shape[0], 2))
     a[0] = a0
-
     for i in range(len(t)-1):
         dt = t[i+1] - t[i] # nicht langsam
-        # dg_dz = adjoint_f_1(z[i], z_ref[i], optimisation_parameters) # nicht langsam
-        # # start = time.time()
-        # df_dz = df_dz_trajectory[i] # this step takes 0.0003 seconds for 1000 steps this means 0.33 seconds
-        # # end = time.time()
-        # d_adj = adjoint_f_2(df_dz, a[i], dg_dz) # langsam?
-
         d_adj = adjoint_f(a[i], z[i], z_ref[i], t[i], optimisation_parameters, df_dz_trajectory[i]) # lang, aber die steps brauchen nicht lang?
         a[i+1] = a[i] + dt * d_adj
-
-        # times.append(end-start)
-
-    # times = np.asarray(times).sum()
-    # # print(f'Test Time: {times}')
     return a
 
 # For calculation of the reference solution we need the correct behaviour of the VdP
 def damping(params, inputs):
     return params * (1 - inputs[0]**2) * inputs[1]
 
-def zero(params, inputs):
-    return 0.0
+def constant(params, inputs):
+    return params
 
 def eval_fmu_NN(fmu_evaluator_NN, Tstart, Tend, params, inputs):
     output = fmu_evaluator_NN.evaluate_nn_fmu(t=Tend, inputs=inputs)
@@ -215,7 +200,6 @@ def optimisation_wrapper(model_parameters, args):
     start = time.time()
     dinput_dz_trajectory = vectorized_dinput_dz_function(model_parameters, z)
     df_dz_trajectory = vectorized_df_dz_function(dfmu_dz_trajectory, dinput_dz_trajectory, dfmu_dinput_trajectory)
-
 
     adjoint_start = time.time()
     a0 = np.array([0, 0])
@@ -328,7 +312,9 @@ if __name__ == '__main__':
 
     # PURE FMU MODEL WITH DERIVATIVES FOR RESIDUALS
     ####################################################################################
-    _, z_dot_fmu = f_euler(z0=z0, t=t, fmu_evaluator=fmu_evaluator, model=zero, model_parameters=None, save_derivatives=True)
+    z_ref = f_euler(z0=z0, t=t, fmu_evaluator=fmu_evaluator, model=damping, model_parameters=mu, save_derivatives=False)
+    fmu_evaluator.reset_fmu(Tstart, Tend)
+    _, z_dot_fmu = f_euler(z0=z0, t=t, fmu_evaluator=fmu_evaluator, model=constant, model_parameters=0.0, save_derivatives=True)
     fmu_evaluator.reset_fmu(Tstart, Tend)
 
     # OPTIMISATION
@@ -381,9 +367,9 @@ if __name__ == '__main__':
 
     # Optimise the mu value via scipy
     # Optimisers: CG, BFGS, Newton-CG, L-BFGS-B, TNC, SLSQP, dogleg, trust-ncg, trust-krylov, trust-exact and trust-constr
-    # res = minimize(residual_wrapper, flat_nn_parameters, method='BFGS', jac=True, args=args_residual, tol=1e-8)
-    # flat_nn_parameters = res.x
-    # print(res)
+    res = minimize(residual_wrapper, flat_nn_parameters, method='BFGS', jac=True, args=args_residual, tol=1e-8)
+    flat_nn_parameters = res.x
+    print(res)
 
     res = minimize(optimisation_wrapper, flat_nn_parameters, method='BFGS', jac=True, args=args_trajectory, tol=1e-8)
 

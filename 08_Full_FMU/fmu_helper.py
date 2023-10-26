@@ -204,12 +204,12 @@ class FMUEvaluator:
             dfmu_dz, dfmu_dinput
         """
         status = self.fmu.setTime(t)
-        self.fmu.getContinuousStates(self.pointers._px, self.pointers.x.size)
 
         if self.training:
             if augment_model_function is not None:
                 control = augment_model_function(params=augment_model_args, inputs=self.pointers.x)
                 self.fmu.setReal(self.vr_inputs, control if type(control) is list else [control])
+            self.fmu.getContinuousStates(self.pointers._px, self.pointers.x.size)
             status = self.fmu.getDerivatives(self.pointers._pdx, self.pointers.dx.size)
             dfmu_dz_at_t = self.dfmu_dz_function()
             dfmu_dinput_at_t = self.dfmu_dinput_function()
@@ -217,14 +217,15 @@ class FMUEvaluator:
             if augment_model_function is not None:
                 control = augment_model_function(params=augment_model_args, inputs=self.pointers.x)
                 self.fmu.setReal(self.vr_inputs, control if type(control) is list else [control])
-            status = self.fmu.getDerivatives(self.pointers._pdx, self.pointers.dx.size)
+            self.fmu.getContinuousStates(self.pointers._px, self.pointers.x.size)
+            self.fmu.getDerivatives(self.pointers._pdx, self.pointers.dx.size)
 
         self.pointers.x += dt * self.pointers.dx
 
-        status = self.fmu.setContinuousStates(self.pointers._px, self.pointers.x.size)
+        self.fmu.setContinuousStates(self.pointers._px, self.pointers.x.size)
 
         # get event indicators at t = time
-        status = self.fmu.getEventIndicators(self.pointers._pz, self.pointers.z.size)
+        self.fmu.getEventIndicators(self.pointers._pz, self.pointers.z.size)
 
         # inform the model about an accepted step
         enterEventMode, terminateSimulation = self.fmu.completedIntegratorStep()
