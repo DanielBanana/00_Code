@@ -28,7 +28,7 @@ import yaml
 class ExplicitMLP(nn.Module):
     features: Sequence[int]
     def setup(self):
-        self.layers = [nn.Dense(feat, kernel_init=nn.initializers.normal(0.0), bias_init=nn.initializers.normal(0.0)) for feat in self.features]
+        self.layers = [nn.Dense(feat, kernel_init=nn.initializers.xavier_normal(), bias_init=nn.initializers.normal(0.0)) for feat in self.features]
 
     # layers = []
     # for feat in self.features:
