@@ -49,46 +49,46 @@ DATASETS = {
     'VdP': ''
 }
 
-# PYTHON ONLY ODEs
-@jit
-def ode(x, t, variables):
-    '''Calculates the right hand side of the original ODE.'''
-    kappa = variables[0]
-    mu = variables[1]
-    mass = variables[2]
-    derivative = jnp.array([x[1],
-                           -kappa*x[0]/mass + (mu*(1-x[0]**2))/mass])
-    return derivative
+# # PYTHON ONLY ODEs
+# @jit
+# def ode(x, t, variables):
+#     '''Calculates the right hand side of the original ODE.'''
+#     kappa = variables[0]
+#     mu = variables[1]
+#     mass = variables[2]
+#     derivative = jnp.array([x[1],
+#                            -kappa*x[0]/mass + (mu*(1-x[0]**2))/mass])
+#     return derivative
 
-@jit
-def ode_res(x, t, variables):
-    '''Calculates the right hand side of the deficient ODE.'''
-    kappa = variables[0]
-    mu = variables[1]
-    mass = variables[2]
-    derivative = jnp.array([x[1],
-                           -kappa*x[0]/mass])
-    return derivative
+# @jit
+# def ode_res(x, t, variables):
+#     '''Calculates the right hand side of the deficient ODE.'''
+#     kappa = variables[0]
+#     mu = variables[1]
+#     mass = variables[2]
+#     derivative = jnp.array([x[1],
+#                            -kappa*x[0]/mass])
+#     return derivative
 
-@jit
-def ode_stim(x, t, variables):
-    '''Calculates the right hand side of the original ODE.'''
-    kappa = variables[0]
-    mu = variables[1]
-    mass = variables[2]
-    derivative = jnp.array([x[1],
-                           -kappa*x[0]/mass + (mu*(1-x[0]**2)*x[1])/mass + 1.2*jnp.cos(jnp.pi/5*t)])
-    return derivative
+# @jit
+# def ode_stim(x, t, variables):
+#     '''Calculates the right hand side of the original ODE.'''
+#     kappa = variables[0]
+#     mu = variables[1]
+#     mass = variables[2]
+#     derivative = jnp.array([x[1],
+#                            -kappa*x[0]/mass + (mu*(1-x[0]**2)*x[1])/mass + 1.2*jnp.cos(jnp.pi/5*t)])
+#     return derivative
 
-@jit
-def ode_stim_res(x, t, variables):
-    '''Calculates the right hand side of the original ODE.'''
-    kappa = variables[0]
-    mu = variables[1]
-    mass = variables[2]
-    derivative = jnp.array([x[1],
-                           -kappa*x[0]/mass + 1.2*jnp.cos(jnp.pi/5*t)])
-    return derivative
+# @jit
+# def ode_stim_res(x, t, variables):
+#     '''Calculates the right hand side of the original ODE.'''
+#     kappa = variables[0]
+#     mu = variables[1]
+#     mass = variables[2]
+#     derivative = jnp.array([x[1],
+#                            -kappa*x[0]/mass + 1.2*jnp.cos(jnp.pi/5*t)])
+#     return derivative
 
 def create_residual_references(x_ref, t, variables):
     x_dot = (x_ref[1:] - x_ref[:-1])/(t[1:] - t[:-1]).reshape(-1,1)
@@ -150,7 +150,7 @@ class Hybrid_FMU(nn.Module):
         '''Applies euler to the VdP ODE by calling the fmu; returns the trajectory'''
         t = self.t
         x0 = self.x0
-        x = np.zeros((t.shape[0], 2))
+        x = np.zeros((t.shape[0], x0.shape[0]))
         x[0] = x0
         # Forward the initial state to the FMU
         self.fmu_model.setup_initial_state(x0)
@@ -267,7 +267,7 @@ class Hybrid_Python(nn.Module):
 
 def f_euler_fmu(x0, t, fmu_evaluator: FMUEvaluator, model, model_parameters, make_zero_input_prediction=False):
     '''Applies euler to the VdP ODE by calling the fmu; returns the trajectory'''
-    x = np.zeros((t.shape[0], 2))
+    x = np.zeros((t.shape[0], x0.shape[0]))
     x[0] = x0
     # Forward the initial state to the FMU
     fmu_evaluator.setup_initial_state(x0)
@@ -730,10 +730,15 @@ def train(model:Hybrid_FMU or Hybrid_Python, args: dict):
             if gS['plot_parameters']:
                 visualise_wb([p for p in model.parameters()], results_directory, f'Parameters Epoch {args["epoch"]}')
 
-        if args['losses_test'][-1] < args['best_loss']:
+        if args['epoch'] == 0:
             args['best_loss'] = args['losses_test'][-1]
             if gS['save_parameters']:
                 save_best_experiment(args, model, best_parameter_file)
+        else:
+            if args['losses_test'][-1] < args['best_loss']:
+                args['best_loss'] = args['losses_test'][-1]
+                if gS['save_parameters']:
+                    save_best_experiment(args, model, best_parameter_file)
 
         if oD['cooling']:
             optimizer.cooling_step()
