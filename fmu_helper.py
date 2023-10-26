@@ -174,7 +174,7 @@ class FMUEvaluator:
 
     def euler(self, z0, t, model, model_parameters=None, make_zero_input_prediction=False):
         '''Applies euler to the VdP ODE by calling the fmu; returns the trajectory'''
-        z = np.zeros((t.shape[0], 2))
+        z = np.zeros((t.shape[0], z0.shape[0]))
         z[0] = z0
         self.setup_initial_state(z0)
 
@@ -370,7 +370,7 @@ class FMUEvaluator:
         _type_
             The jacobian as a numpy array
         """
-        dfmu_dz = np.zeros((2,2))
+        dfmu_dz = np.zeros((self.n_states,self.n_states))
         for j in range(self.n_states):
                 dfmu_dz[:, j] = np.array(self.fmu.getDirectionalDerivative(self.vr_derivatives, [self.vr_states[j]], [1.0]))
         return dfmu_dz
