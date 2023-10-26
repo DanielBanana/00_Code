@@ -26,8 +26,9 @@ import ASM
 import CBO
 import NN
 import CSTR
+import Lorenz
 
-namespaces = {'VdP': VdP, 'CSTR': CSTR}
+namespaces = {'VdP': VdP, 'CSTR': CSTR, 'Lorenz': Lorenz}
 
 def create_reference_solution(start, end, n_steps, x0, variables, ode_integrator, ode, test_factor = 1):
     t_train = np.linspace(start, end, n_steps)
@@ -59,11 +60,11 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
     # PROBLEM SETUP
-    parser.add_argument('--problemDescription', type=str, default='Problem_VdP.yaml', help='''Yaml file of the
+    parser.add_argument('--pD', type=str, default='Problem_VdP.yaml', help='''Yaml file of the
                         the problem setup''')
-    parser.add_argument('--datamodelDescription', type=str, default='Model_NN.yaml', help='''Yaml file of the
+    parser.add_argument('--mD', type=str, default='Model_NN.yaml', help='''Yaml file of the
                         the datadriven model setup''')
-    parser.add_argument('--optimizerDescription', type=str, default='Optimizer_ASM.yaml', help='''Yaml file of the
+    parser.add_argument('--oD', type=str, default='Optimizer_ASM.yaml', help='''Yaml file of the
                         the optimizer setup''')
     parser.add_argument('--gS', type=str, default='GeneralSettings.yaml', help='''Yaml file of the
                         the general Settings (where to write files and plots, etc.
@@ -74,9 +75,9 @@ if __name__ == '__main__':
     # are also in this directory
     path = os.path.abspath(__file__)
     directory = os.path.sep.join(path.split(os.path.sep)[:-1])
-    pD_path = os.path.join(directory, args.problemDescription)
-    mD_path = os.path.join(directory, args.datamodelDescription)
-    oD_path = os.path.join(directory, args.optimizerDescription)
+    pD_path = os.path.join(directory, args.pD)
+    mD_path = os.path.join(directory, args.mD)
+    oD_path = os.path.join(directory, args.oD)
     gS_path = os.path.join(directory, args.gS)
 
     # TODO logger
@@ -159,8 +160,6 @@ if __name__ == '__main__':
                 x0_train.append(pD['initial_conditions'][variable.name])
         x0_train = np.array(x0_train)
 
-
-        # TODO REPLACE HARDCODED GENERATION OF VDP REFERENCE SET WITH GENERAL CALCULATION
         t_train = np.linspace(pD['integration_parameters']['start'], pD['integration_parameters']['end'], pD['integration_parameters']['steps'])
         t_test = np.linspace(pD['integration_parameters']['end'], pD['integration_parameters']['end']*(test_factor+1), int(pD['integration_parameters']['steps']*test_factor))
         reference_training = fmu_evaluator.euler(z0=x0_train, t=t_train, model=namespace.missing_terms, model_parameters=pD['variables'], make_zero_input_prediction=oD['residual_training'])
@@ -187,12 +186,13 @@ if __name__ == '__main__':
             ############################################################################
             ## RESIDUAL PREPARATIONS ###################################################
             ############################################################################
-            if mD['name'] == 'NN':
+            if 'NN' in mD['name']:
                 if oD['name'] == 'CBO':
                     layers = [pD['inputs']] + mD['layers'] + [pD['outputs']]
                     datamodel = CustomMLP(layers)
                     hybrid_model = CBO.Hybrid_FMU(fmu_evaluator, datamodel, x0_train, t_train, mode='residual' if oD['residual_training'] else 'trajectory')
                     pointers = hybrid_model.pointers
+                    hybrid_model.training = False # only needed for gradient based training
                 elif oD['name'] == 'ASM':
                     layers = mD['layers'] + [pD['outputs']]
                     datamodel, parameters, _ = NN.create_nn(layers, x0_train)
@@ -354,7 +354,7 @@ if __name__ == '__main__':
             ############################################################################
             ## TRAJECTORY PREPARATIONS  ################################################
             ############################################################################
-            if mD['name'] == 'NN':
+            if 'NN' in mD['name']:
                 if oD['name'] == 'CBO':
                     layers = [pD['inputs']] + mD['layers'] + [pD['outputs']]
                     datamodel = CustomMLP(layers)
@@ -515,6 +515,7 @@ if __name__ == '__main__':
                 x_test_pred = optimizer_args['best_pred_test']
             else:
                 logger.error(f'Unknown Optimizer: {oD["name"]}')
+                best_parameters = None
                 exit(1)
 
             ############################################################################
@@ -538,21 +539,41 @@ if __name__ == '__main__':
             if gS['plot_parameters']:
                 visualise_wb(best_parameters, trajectory_directory, f'Best Parameters')
 
-        if mD['name'] == 'NN':
-            path  = os.path.join(directory, f"{mD['name']}", "build", f"{mD['name']}.fmu")
-            targetDirPath = os.path.join(directory, f"{mD['name']}")
+        if 'NN' in mD['name']:
+            # NN_FMU_NAME = f'{mD["name"]}_{pD["name"]}_{oD["name"]}'
+            NN_FMU_NAME = pD['model_fmu_name']
+            path  = os.path.join(directory, NN_FMU_NAME, "build", NN_FMU_NAME + ".fmu")
+            targetDirPath = os.path.join(directory, NN_FMU_NAME)
             # if oD['name'] == 'ASM':
                 # best_parameters, _ = flatten_util.ravel_pytree(best_parameters)
-            create_NN_FMU(targetDirPath, mD['name'], best_parameters, pD['inputs'], pD['outputs'])
+            create_NN_FMU(targetDirPath, NN_FMU_NAME, best_parameters, pD['inputs'], pD['outputs'])
             fmu_evaluator_NN = FMUEvaluator(path, 0, 1)
 
             nn_fmu_eval_function = fmu_evaluator_NN.evaluate_fmu_NN
 
-            fmu_evaluator.training = False
-            x_train_fmu = fmu_evaluator.euler(x0_train, t_train, model=nn_fmu_eval_function, model_parameters=None, )
-            fmu_evaluator.reset_fmu(pD['integration_parameters']['end'], pD['integration_parameters']['end']*(test_factor+1))
-            x_test_fmu = fmu_evaluator.euler(x0_test, t_test, model=nn_fmu_eval_function, model_parameters=None)
-            fmu_evaluator.reset_fmu(pD['integration_parameters']['start'], pD['integration_parameters']['end'])
+            if oD['name'] == 'CBO':
+                hybrid_model.t = t_train
+                hybrid_model.x0 =  x0_train
+                hybrid_model.trajectory_mode()
+                x_train_pred = hybrid_model()
+                hybrid_model.t = t_test
+                hybrid_model.x0 = x0_test
+                x_test_pred = hybrid_model()
+
+                hybrid_model.augment_model_function = nn_fmu_eval_function
+                hybrid_model.t = t_train
+                hybrid_model.x0 =  x0_train
+                hybrid_model.trajectory_mode()
+                x_train_fmu = hybrid_model()
+                hybrid_model.t = t_test
+                hybrid_model.x0 = x0_test
+                x_test_fmu = hybrid_model()
+            elif oD['name'] == 'ASM':
+                fmu_evaluator.training = False
+                x_train_fmu = fmu_evaluator.euler(x0_train, t_train, model=nn_fmu_eval_function, model_parameters=None, )
+                fmu_evaluator.reset_fmu(pD['integration_parameters']['end'], pD['integration_parameters']['end']*(test_factor+1))
+                x_test_fmu = fmu_evaluator.euler(x0_test, t_test, model=nn_fmu_eval_function, model_parameters=None)
+                fmu_evaluator.reset_fmu(pD['integration_parameters']['start'], pD['integration_parameters']['end'])
             result_plot_multi_dim(mD['name'], pD['name'], os.path.join(results_directory, f'Loaded FMU Prediction.png'),
                 t_train, x_train_fmu, t_test, x_test_fmu, np.hstack((t_train, t_test)), np.vstack((x_train_pred, x_test_pred)))
 
@@ -564,8 +585,9 @@ if __name__ == '__main__':
         # 1. Create Reference Solution
         # A reference solution is needed for all problems, models and optimizers
         x0_train = []
-        for ic in pD['initial_conditions']:
-            x0_train.append(ic.value())
+        for variable_name in pD['initial_conditions'].keys():
+            x0_train.append(pD['initial_conditions'][variable_name])
+        x0_train = np.array(x0_train)
         logger.info('Creating Reference Solution')
         namespace = namespaces[pD['name']]
         ode = namespace.ode
@@ -588,7 +610,7 @@ if __name__ == '__main__':
             'x_ref_test': x_ref_test
         }
 
-        if mD['name'] == 'NN':
+        if 'NN' in mD['name']:
             if oD['name'] == 'CBO':
                 layers = [pD['inputs']] + mD['layers'] + [pD['outputs']]
                 datamodel = CustomMLP(layers)
