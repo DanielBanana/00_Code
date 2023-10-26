@@ -1,6 +1,6 @@
 name: ASM # Adjoint State Method
 batching: true # needed for clean_batching
-batch_size: 100
+batch_size: 50
 method: Adam # BFSG, CG, SLSQP, Adam
 tol: 0.00001 # Only for BFGS, CG, SLSQP
 lambda: 2.0 # Gradient regularisation
@@ -9,6 +9,6 @@ adam_beta1: 0.9
 adam_beta2: 0.999
 adam_eps: 0.00000001
 trajectory_training: true
-epochs: 3
-residual_training: true
-epochs_res: 3
+epochs: 10
+residual_training: false
+epochs_res: 10

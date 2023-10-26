@@ -1,4 +1,4 @@
-results_directory: RES_TRAJ_CBO_FMU
+results_directory: VdP_RES_TRAJ_ASM_FMU
 plot_loss: true
 plot_prediction: true
 plot_parameters: true

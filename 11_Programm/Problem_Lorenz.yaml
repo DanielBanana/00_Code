@@ -1,21 +1,21 @@
-name: VdP # Van der Pol Oscillator
-file: 'Van_der_Pol_damping_input.fmu'
-model_fmu_name: VdP_NN_ASM
+name: Lorenz # Continuously stirred reactor tank
+file: 'Lorenz_input.fmu'
 type: regression
 integration_parameters:
   start: 0.0
-  end: 100.0
-  steps: 20001
-variables:
-  mu: 3
-  kappa: 1.0
-  mass: 1.0
+  end: 10.0
+  steps: 10001
+variables: # For the python implementation
+  sigma: 10.0
+  rho: 28.0
+  beta: 2.66666666666
 initial_conditions:
-  u: 1.0
-  v: 0.0
-inputs: 2
+  x: 1.0
+  y: 1.0
+  z: 1.0
+inputs: 3
 outputs: 1
-relevant_output_dims_res: [1] # Should be a list of indices indicating the dimensions
+relevant_output_dims_res: [2] # Should be a list of indices indicating the dimensions
 # in which the model is deficient in. I.e. for the VdP Problem where we approximate the
 # damping term in the second differential equation. We ignore the dimensions because here
 # the reduced model is already correct. -> relevant_output_dims_res = [1] and not relevant_output_dims_res = [0,1]
@@ -24,6 +24,3 @@ aug_state: false
 n_aug_states: 2
 simple: false
 fmu: true
-
-
-

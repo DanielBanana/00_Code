@@ -2,7 +2,7 @@ name: CBO
 alpha: 50.0
 l: 1.0
 eps: 0.00001
-dt: 0.1
+dt: 0.01
 sigma: 1.0
 lambda: 2.0 # regularisation of gradient
 batching: True # Not meant to be False
@@ -13,6 +13,6 @@ partial_update: true
 anisotropic: true
 cooling: false
 trajectory_training: true
-epochs: 3
+epochs: 10
 residual_training: true
-epochs_res: 3
+epochs_res: 10

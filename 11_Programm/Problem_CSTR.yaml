@@ -3,8 +3,8 @@ file: 'CSTR_input.fmu'
 type: regression
 integration_parameters:
   start: 0.0
-  end: 10.0
-  steps: 1001
+  end: 7.0
+  steps: 10001
 variables: # For the python implementation
   q: 100  # L/min
   cA_i: 1  # mol/L
@@ -22,7 +22,7 @@ initial_conditions:
   cA: 0.5
 inputs: 2
 outputs: 1
-relevant_output_dims_res: [0,1] # Should be a list of indices indicating the dimensions
+relevant_output_dims_res: [0] # Should be a list of indices indicating the dimensions
 # in which the model is deficient in. I.e. for the VdP Problem where we approximate the
 # damping term in the second differential equation. We ignore the dimensions because here
 # the reduced model is already correct. -> relevant_output_dims_res = [1] and not relevant_output_dims_res = [0,1]
