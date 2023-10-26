@@ -1,0 +1,3 @@
+*.so1.0.0
+*.dylib
+/libNN_CSTR_CBO.so.1.0.0
