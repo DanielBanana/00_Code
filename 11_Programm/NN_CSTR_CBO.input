@@ -1,5 +1,5 @@
 {
-    "modelName": "NN_Lorenz",
+    "modelName": "NN_CSTR_CBO",
     "description": "",
     "variables": []
 }
