@@ -178,12 +178,10 @@ class AdamOptim():
 #                             jitted_neural_network(parameters, x)]).flatten()
 #     return derivative
 
-
 def adjoint_f(adj, x, x_ref, t, variables, parameters, hybrid_ode, model_function):
     '''Calculates the right hand side of the adjoint system.'''
     df_dx = jax.jacobian(hybrid_ode, argnums=0)(x, t, variables, parameters, model_function)
-    dg_dx = jax.grad(g, argnums=0)(x, x_ref, parameters)
-    d_adj = - df_dx.T @ adj - dg_dx
+    d_adj = adjoint_fmu(adj, x, x_ref, t, parameters, df_dx)
     return d_adj
 
 @jit
@@ -193,7 +191,7 @@ def adjoint_fmu(adj, x, x_ref, t, parameters, df_dx_at_t):
     d_adj = - df_dx_at_t.T @ adj - dg_dx
     return d_adj
 
-
+@jit
 def g(x, x_ref, parameters):
     '''Calculates the inner part of the loss function.
 
@@ -235,13 +233,15 @@ def hybrid_euler(x0, t, variables, parameters, hybrid_ode, model_function):
     x = jnp.zeros((t.shape[0], x0.shape[0]))
     x = x.at[0].set(x0)
     i = jnp.asarray(range(t.shape[0]))
-    # We can replace the loop over the time by a lax.scan this is 3 times as fast: 0.32-0.26 -> 0.11-0.9
+    # We can replace the loop over the time by a lax.scan this is 3 times as fast: 0.32-0.26 -> 0.11-0.09
     euler_body_func = partial(hybrid_step, t=t, variables=variables, parameters=parameters, hybrid_ode=hybrid_ode, model_function=model_function)
     final, result = lax.scan(euler_body_func, x0, i)
     x = x.at[1:].set(result[:-1])
+    # x = np.zeros((t.shape[0], x0.shape[0]))
+    # x[0] = x0
     # for i in range(len(t)-1):
     #     dt = t[i+1] - t[i]
-    #     x[i+1] = x[i] + dt * hybrid_ode(x[i], t[i], variables, parameters)
+    #     x[i+1] = x[i] + dt * hybrid_ode(x[i], t[i], variables, parameters, model_function)
     return x
 
 def hybrid_step(prev_x, i, t, variables, parameters, hybrid_ode, model_function):
@@ -261,6 +261,7 @@ def adjoint_euler(a0, x, x_ref, t, variables, parameters, hybrid_ode, model_func
     a = a.at[1:].set(result[:-1])
     return a
 
+
 def adjoint_step(prev_a, i, x, x_ref, t, variables, parameters, hybrid_ode, model_function):
     t = jnp.asarray(t)
     x = jnp.asarray(x)
@@ -271,7 +272,7 @@ def adjoint_step(prev_a, i, x, x_ref, t, variables, parameters, hybrid_ode, mode
 
 def adjoint_euler_fmu(a0, z, z_ref, t, optimisation_parameters, df_dz_trajectory):
     '''Applies forward Euler to the adjoint ODE and returns the trajectory'''
-    a = np.zeros((t.shape[0], 2))
+    a = np.zeros((t.shape[0], a0.shape[0]))
     a[0] = a0
     for i in range(len(t)-1):
         dt = t[i+1] - t[i] # nicht langsam
@@ -318,18 +319,28 @@ def create_clean_mini_batch(n_batches, X, t):
         ts.append(t[s[i]:s[i]+mini_batch_size])
     return x0, targets, ts
 
-def model_losses(x0, a0s, ts, variables, parameters, targets, hybrid_ode, model_function):
+def model_losses(x0, a0s, ts, variables, parameters, targets, hybrid_ode, model_function, logger):
     xs = []
     losses = []
     adjoints = []
     # Compute Predictions
     for i, ic in enumerate(x0):
+        start_pred = time.time()
         x = hybrid_euler(ic, ts[i], variables, parameters, hybrid_ode, model_function)
+        time_pred = time.time()-start_pred
+        start_adjoint = time.time()
         adjoint = adjoint_euler(a0s[i], np.flip(x, axis=0), np.flip(targets[i], axis=0), np.flip(ts[i]), variables, parameters, hybrid_ode, model_function)
         adjoint = np.flip(adjoint, axis=0)
+        time_adjoint = time.time() - start_adjoint
         losses.append(float(J(x, targets[i], parameters)))
         xs.append(x)
         adjoints.append(adjoint)
+        if i % 10 == 0:
+            logger.info('Batch [{}/{} ({:.0f}%)] Time pred:{:.5f}, Time adj:{:.5f}'.format(
+                    i,
+                    len(x0),
+                    100. * i / len(x0),
+                    time_pred, time_adjoint))
 
     return xs, adjoints, losses
 
@@ -512,13 +523,14 @@ def residual_wrapper(parameters, args):
 
     epoch_time = time.time() - start
 
-    logger.info('Epoch: {:04d}/{}    Loss (TrajTrain): {:.5e}    Loss (TrajTest): {:.5e}    Loss (ResTrain{}): {:.5e}'.format(
+    logger.info('Epoch: {:04d}/{}    Loss (TrajTrain): {:.5e}    Loss (TrajTest): {:.5e}    Loss (ResTrain{}): {:.5e}    Time: {:.5e}'.format(
                     args['epoch'],
                     args['epochs'],
                     loss,
                     loss_test,
                     ', batched' if oD['batching'] else '',
-                    loss_res
+                    loss_res,
+                    epoch_time
                     ))
 
     args['epoch'] += 1
@@ -587,15 +599,23 @@ def trajectory_wrapper(parameters, args):
             losses = []
             times = []
             gradients = []
+            start_full = time.time()
+            time_preds = []
             for batch_idx, (input_train, output_train) in enumerate(zip(args['inputs_train'], args['outputs_train'])):
+                batchstart = time.time()
                 time_batch = input_train
                 x_ref_train_batch = output_train
+                start_pred = time.time()
                 x_pred_batch, dfmu_dz_batch, dfmu_dinput_batch = fmu_evaluator.euler(x_ref_train_batch[0], time_batch,model, parameters) # 0.06-0.09 sec
+                time_pred = time.time() - start_pred
+                time_preds.append(time_pred)
                 dinput_dz_batch = vectorized_dinput_dx_function(parameters, x_pred_batch)
                 df_dx_batch = vectorized_df_dx_function(dfmu_dz_batch, dinput_dz_batch, dfmu_dinput_batch)
-                a0 = np.array([0, 0])
+                a0 = np.zeros(pD['inputs'])
+                start_adjoint = time.time()
                 adjoint_batch = adjoint_euler_fmu(a0, np.flip(x_pred_batch, axis=0), np.flip(x_ref_train_batch, axis=0), np.flip(time_batch), parameters, np.flip(np.asarray(df_dx_batch), axis=0)) # 0.025-0.035
                 adjoint_batch = np.flip(adjoint_batch, axis=0)
+                time_adjoint = time.time()-start_adjoint
                 loss_batch = J(x_pred_batch, x_ref_train_batch, parameters)
                 dinput_dtheta_batch = dinput_dtheta_function(parameters, x_pred_batch)
 
@@ -606,8 +626,8 @@ def trajectory_wrapper(parameters, args):
                     # Sum the matmul result over the entire time_span to get the final gradients
                     df_dtheta_batch['params'][layer]['bias'] = np.einsum("iN,iNj->j", adjoint_batch, df_dtheta_batch['params'][layer]['bias'])
                     df_dtheta_batch['params'][layer]['kernel'] = np.einsum("iN,iNjk->jk", adjoint_batch, df_dtheta_batch['params'][layer]['kernel'])
-                    dg_dtheta_batch['params'][layer]['kernel'] = np.einsum("Nij->ij", dg_dtheta_batch['params'][layer]['kernel'])
                     dg_dtheta_batch['params'][layer]['bias'] = np.einsum("Nj->j", dg_dtheta_batch['params'][layer]['bias'])
+                    dg_dtheta_batch['params'][layer]['kernel'] = np.einsum("Nij->ij", dg_dtheta_batch['params'][layer]['kernel'])
 
                 pred_batches.append(x_pred_batch)
                 # adjoints.append(adjoint)
@@ -617,17 +637,25 @@ def trajectory_wrapper(parameters, args):
                 flat_dJ_dtheta, _ = flatten_util.ravel_pytree(dJ_dtheta)
                 gradients.append(flat_dJ_dtheta)
 
+                if batch_idx % 10 == 0:
+                    logger.info('Batch [{}/{} ({:.0f}%)] Time pred:{:.5f}, Time adj:{:.5f}'.format(
+                    batch_idx,
+                    len(args['inputs_train']),
+                    100. * batch_idx / len(args['inputs_train']),
+                    time_pred, time_adjoint))
+            time_full = time.time()- start_full
+            time_preds = np.array(time_preds).sum()
             loss_batches = np.asarray(losses).sum()
             accuracies_batches = 0.0
             pred_batched = np.vstack(pred_batches)
             gradient = np.array(gradients).sum(0)
         else:
+            start_full = time.time()
             times = np.array(args['inputs_train'])
             x_ref_train_batches = np.array(args['outputs_train'])
             a0s = np.zeros((len(args['inputs_train']), *x_ref_train[0].shape))
             x0s = x_ref_train_batches[:,0]
-            pred_batches, adjoints, losses = model_losses(x0s, a0s, times, pD['variables'], parameters, x_ref_train_batches, hybrid_ode, model)
-
+            pred_batches, adjoints, losses = model_losses(x0s, a0s, times, pD['variables'], parameters, x_ref_train_batches, hybrid_ode, model, logger)
             loss_batches = np.asarray(losses).sum()
             accuracies_batches = 0.0
             gradients = []
@@ -647,6 +675,7 @@ def trajectory_wrapper(parameters, args):
                 gradients.append(flat_dJ_dtheta)
             gradient = np.asarray(gradients).sum(0)
             pred_batched = np.vstack(pred_batches)
+            time_full = time.time()-start_full
     else:
         a0 = np.zeros(x_ref_train[0].shape)
         adjoint = adjoint_euler(a0, np.flip(x_pred, axis=0), np.flip(x_ref_train, axis=0), np.flip(t_train), pD['variables'], parameters, hybrid_ode, model)
@@ -723,19 +752,21 @@ def trajectory_wrapper(parameters, args):
 
     L2_regularisation = oD['lambda']/(2*(t_train.shape[0])) * np.linalg.norm(gradient, 2)**2
 
-    end = time.time()
+    epoch_time = time.time() - start
 
     # loss_cutoff = 1e-5
     # if loss_res < loss_cutoff:
     #     warnings.warn('Terminating Optimization: Required Loss reached')
 
-    logger.info('Epoch: {:04d}/{}    Loss (TrajTrain): {:.5e}    Loss (TrajTest): {:.5e}    Loss (TrajTrain{}): {:.5e}'.format(
+    logger.info('Epoch: {:04d}/{}    Loss (TrajTrain): {:.5e}    Loss (TrajTest): {:.5e}    Loss (TrajTrain{}): {:.5e}    Time: {:.5e}    Adjoint+Pred: {:.5e}'.format(
                     epoch,
                     args['epochs'],
                     loss,
                     loss_test,
                     ', batched' if oD['batching'] else '',
-                    loss_batches
+                    loss_batches,
+                    epoch_time,
+                    time_full
                     ))
     args['epoch'] += 1
     return loss + L2_regularisation, gradient
