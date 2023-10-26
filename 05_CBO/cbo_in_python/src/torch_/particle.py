@@ -3,6 +3,7 @@ import torch.nn as nn
 
 import numpy as np
 
+import copy
 from copy import deepcopy
 
 
@@ -20,7 +21,7 @@ class Particle(nn.Module):
             self.pointers = model.fmu_model.get_pointers()
             fmu_model = model.fmu_model
             model.fmu_model = None
-            self.model = deepcopy(model)
+            self.model = copy.copy(model)
             if restore:
                 for p in self.model.parameters():
                     with torch.no_grad():
