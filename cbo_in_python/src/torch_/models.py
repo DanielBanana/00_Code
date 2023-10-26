@@ -61,7 +61,7 @@ class CustomMLP(nn.Module):
                 n = m.in_features
                 y = 1.0/np.sqrt(n)
                 m.weight.data.uniform_(-y, y)
-                m.bias.data.fill_(0)
+                m.bias.data.uniform_(-y, y)
 
         self.model.apply(weights_init_uniform_rule)
 
